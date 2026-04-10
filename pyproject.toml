@@ -1,0 +1,34 @@
+[project]
+name = "leadgen"
+version = "0.1.0"
+description = "Telegram bot for B2B lead generation via Google Places"
+requires-python = ">=3.12"
+dependencies = [
+    "aiogram>=3.5.0",
+    "sqlalchemy[asyncio]>=2.0.29",
+    "asyncpg>=0.29.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.2.1",
+    "httpx>=0.27.0",
+    "openpyxl>=3.1.2",
+    "structlog>=24.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/leadgen"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["leadgen"]
