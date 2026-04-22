@@ -14,6 +14,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from html import escape as html_escape
+from typing import Any
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
@@ -31,7 +32,12 @@ from leadgen.pipeline.enrichment import enrich_leads
 logger = logging.getLogger(__name__)
 
 
-async def run_search(query_id: uuid.UUID, chat_id: int, bot: Bot) -> None:
+async def run_search(
+    query_id: uuid.UUID,
+    chat_id: int,
+    bot: Bot,
+    user_profile: dict[str, Any] | None = None,
+) -> None:
     """Execute a lead-generation search and deliver results to the user."""
     progress_id: int | None = None
     try:
@@ -125,7 +131,9 @@ async def run_search(query_id: uuid.UUID, chat_id: int, bot: Bot) -> None:
 
         # 3. Enrichment
         top_leads = all_leads[:enrich_n]
-        enriched = await enrich_leads(top_leads, collector, niche, region)
+        enriched = await enrich_leads(
+            top_leads, collector, niche, region, user_profile=user_profile
+        )
 
         await _edit(
             bot,
@@ -138,7 +146,9 @@ async def run_search(query_id: uuid.UUID, chat_id: int, bot: Bot) -> None:
         # 4. Aggregation + base insights
         analyzer = AIAnalyzer()
         stats = aggregate_analysis(enriched)
-        insights = await analyzer.base_insights(enriched, niche, region)
+        insights = await analyzer.base_insights(
+            enriched, niche, region, user_profile=user_profile
+        )
 
         # 5. Persist summary
         async with session_factory() as session:

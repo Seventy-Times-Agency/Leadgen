@@ -50,6 +50,7 @@ async def enrich_leads(
     collector: GooglePlacesCollector,
     niche: str,
     region: str,
+    user_profile: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Enrich a batch of leads in parallel and persist results."""
     if not leads:
@@ -100,8 +101,10 @@ async def enrich_leads(
             }
         )
 
-    # 4. AI analysis in parallel
-    analyses: list[LeadAnalysis] = await analyzer.analyze_batch(contexts, niche, region)
+    # 4. AI analysis in parallel — personalized for the user's profile
+    analyses: list[LeadAnalysis] = await analyzer.analyze_batch(
+        contexts, niche, region, user_profile=user_profile
+    )
 
     # 5. Persist + build enriched dicts
     enriched_dicts: list[dict[str, Any]] = []

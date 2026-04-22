@@ -41,6 +41,13 @@ class User(Base):
     queries_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     queries_limit: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
 
+    # User profile — filled during onboarding, used to personalize AI advice
+    profession: Mapped[str | None] = mapped_column(String(200))
+    service_description: Mapped[str | None] = mapped_column(Text)
+    home_region: Mapped[str | None] = mapped_column(String(200))
+    niches: Mapped[list[str] | None] = mapped_column(JSONB)
+    onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     queries: Mapped[list[SearchQuery]] = relationship(back_populates="user")
 
 

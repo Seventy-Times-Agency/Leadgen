@@ -35,31 +35,55 @@ class LeadAnalysis:
     error: str | None = None
 
 
-SYSTEM_PROMPT = """\
-Ты — опытный B2B-продажник в сфере digital-услуг (таргетированная реклама,
-SMM, контекст, разработка сайтов). Твоя задача — оценивать потенциальных
-клиентов по доступной информации: данные из Google Maps, контент сайта,
-соцсети и отзывы.
+SYSTEM_PROMPT_BASE = """\
+Ты — опытный B2B-продажник. Твоя задача — оценивать потенциальных клиентов
+по доступной информации (данные из Google Maps, контент сайта, соцсети,
+отзывы) ИМЕННО ПОД УСЛУГУ КОНКРЕТНОГО ПОЛЬЗОВАТЕЛЯ, который тебя спрашивает.
 
 Возвращай результат СТРОГО в формате JSON, без какого-либо текста до или
 после JSON, без markdown-обёрток:
 
 {
-  "score": <целое число 0-100, общая оценка ценности лида>,
+  "score": <целое число 0-100, общая оценка ценности лида ИМЕННО ДЛЯ ЭТОГО ПОЛЬЗОВАТЕЛЯ>,
   "tags": ["hot"|"warm"|"cold", "small"|"medium"|"large", и т.п.],
   "summary": "одна-две фразы о бизнесе",
-  "advice": "2-3 предложения: как зайти к клиенту, какую боль закрыть, на чём делать упор в питче",
-  "strengths": ["что у них хорошо"],
-  "weaknesses": ["что хромает — точки роста, на которые можно надавить"],
+  "advice": "2-3 предложения: как этому пользователю зайти к этому клиенту, какую боль закрыть, на чём делать упор в питче с учётом его услуги",
+  "strengths": ["что у клиента хорошо"],
+  "weaknesses": ["что хромает — точки роста, которые может закрыть ИМЕННО этот пользователь своей услугой"],
   "red_flags": ["причины НЕ работать с этим клиентом, если есть"]
 }
 
 Критерии скоринга:
-- 75-100 (hot): активный бизнес, видны бюджеты и амбиции, есть слабые стороны в маркетинге, которые можно закрыть
-- 50-74 (warm): жизнеспособный бизнес, но требует прогрева
-- 0-49 (cold): нет сайта/контактов/активности, либо явно не наш профиль
+- 75-100 (hot): клиент релевантен услуге пользователя, у него виден бюджет, и есть слабые места, которые пользователь может закрыть
+- 50-74 (warm): потенциально интересен, но требует прогрева или услуга пользователя не идеально подходит
+- 0-49 (cold): нет сайта/контактов/активности, либо явно не целевой клиент для услуги пользователя
 
 Пиши кратко и по делу. Используй русский язык."""
+
+
+def _format_user_profile(profile: dict[str, Any] | None) -> str:
+    if not profile:
+        return ""
+    parts = ["\n\nПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ (кто спрашивает):"]
+    if profile.get("profession"):
+        parts.append(f"- Чем занимается / что продаёт: {profile['profession']}")
+    if profile.get("home_region"):
+        parts.append(f"- Базовый регион: {profile['home_region']}")
+    if profile.get("niches"):
+        niches = ", ".join(profile["niches"])
+        parts.append(f"- Целевые ниши: {niches}")
+    parts.append(
+        "\nОценивай лида и давай советы ИМЕННО под услугу и профиль этого пользователя."
+    )
+    return "\n".join(parts)
+
+
+def _build_system_prompt(user_profile: dict[str, Any] | None) -> str:
+    return SYSTEM_PROMPT_BASE + _format_user_profile(user_profile)
+
+
+# Back-compat alias for existing tests/imports
+SYSTEM_PROMPT = SYSTEM_PROMPT_BASE
 
 
 def _build_lead_context(lead: dict[str, Any], niche: str, region: str) -> str:
@@ -233,17 +257,24 @@ class AIAnalyzer:
         self.model = model or settings.anthropic_model
         self._sem = asyncio.Semaphore(concurrency or settings.enrich_concurrency)
 
-    async def analyze_lead(self, lead: dict[str, Any], niche: str, region: str) -> LeadAnalysis:
+    async def analyze_lead(
+        self,
+        lead: dict[str, Any],
+        niche: str,
+        region: str,
+        user_profile: dict[str, Any] | None = None,
+    ) -> LeadAnalysis:
         if self.client is None:
             return _heuristic_analysis(lead)
 
         async with self._sem:
             try:
                 context = _build_lead_context(lead, niche, region)
+                system_prompt = _build_system_prompt(user_profile)
                 msg = await self.client.messages.create(
                     model=self.model,
                     max_tokens=900,
-                    system=SYSTEM_PROMPT,
+                    system=system_prompt,
                     messages=[{"role": "user", "content": context}],
                 )
                 text = msg.content[0].text  # type: ignore[union-attr]
@@ -264,11 +295,18 @@ class AIAnalyzer:
                 return heuristic
 
     async def analyze_batch(
-        self, leads: list[dict[str, Any]], niche: str, region: str
+        self,
+        leads: list[dict[str, Any]],
+        niche: str,
+        region: str,
+        user_profile: dict[str, Any] | None = None,
     ) -> list[LeadAnalysis]:
         if not leads:
             return []
-        tasks = [self.analyze_lead(lead, niche, region) for lead in leads]
+        tasks = [
+            self.analyze_lead(lead, niche, region, user_profile=user_profile)
+            for lead in leads
+        ]
         return await asyncio.gather(*tasks)
 
     async def base_insights(
@@ -276,6 +314,7 @@ class AIAnalyzer:
         analysed_leads: list[dict[str, Any]],
         niche: str,
         region: str,
+        user_profile: dict[str, Any] | None = None,
     ) -> str:
         """Produce a high-level analytical summary over the entire base."""
         if not analysed_leads:
@@ -302,17 +341,20 @@ class AIAnalyzer:
                 f"summary={lead.get('summary') or ''}"
             )
 
+        profile_block = _format_user_profile(user_profile) if user_profile else ""
         prompt = (
             f"Ниша: {niche}. Регион: {region}.\n"
-            f"Всего лидов в базе: {len(analysed_leads)}.\n\n"
+            f"Всего лидов в базе: {len(analysed_leads)}.\n"
+            f"{profile_block}\n\n"
             "Срез по проанализированным лидам:\n"
             f"{chr(10).join(snapshot_lines)}\n\n"
-            "Дай короткий аналитический вывод по всей базе (5-7 пунктов):\n"
-            "1) Какие общие паттерны по бизнесам?\n"
-            "2) На каких клиентах фокусироваться в первую очередь?\n"
-            "3) Какие типичные слабые места можно использовать как точку входа?\n"
+            "Дай короткий аналитический вывод по всей базе (5-7 пунктов) "
+            "ИМЕННО под услугу этого пользователя:\n"
+            "1) Какие общие паттерны по бизнесам в этой выборке?\n"
+            "2) На каких клиентах пользователю фокусироваться в первую очередь и почему?\n"
+            "3) Какие типичные слабые места у этих бизнесов может закрыть именно услуга пользователя?\n"
             "4) Какие риски / на что обратить внимание?\n"
-            "5) Конкретные рекомендации для следующих шагов.\n\n"
+            "5) Конкретные рекомендации: с чего начать обзвон/переписку, какой питч использовать.\n\n"
             "Пиши коротко, по делу, маркированным списком на русском языке. "
             "Без markdown-обёрток, просто текст."
         )
