@@ -121,6 +121,23 @@ def _format_profile(user: User) -> str:
     )
 
 
+async def _callback_message(callback: CallbackQuery) -> Message | None:
+    """Return ``callback.message`` as a ``Message`` if possible.
+
+    Telegram may deliver callbacks with an inaccessible message (e.g. old
+    messages after 48h) — ``callback.message`` is then ``None`` or an
+    ``InaccessibleMessage``. In that case we notify the user and let the
+    caller abort.
+    """
+    if isinstance(callback.message, Message):
+        return callback.message
+    await callback.answer(
+        "Это сообщение устарело, начни заново: /start",
+        show_alert=True,
+    )
+    return None
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # /start + onboarding
 # ──────────────────────────────────────────────────────────────────────────────
@@ -232,25 +249,24 @@ async def cmd_profile(message: Message, user: User) -> None:
 
 @router.callback_query(F.data.startswith(PROFILE_EDIT_PREFIX))
 async def profile_edit_start(callback: CallbackQuery, state: FSMContext) -> None:
+    msg = await _callback_message(callback)
+    if msg is None:
+        return
     field = (callback.data or "").removeprefix(PROFILE_EDIT_PREFIX)
     await callback.answer()
 
     if field == "profession":
         await state.set_state(ProfileEditStates.waiting_profession)
-        await callback.message.answer(  # type: ignore[union-attr]
+        await msg.answer(
             "Ок, пришли новое описание того, чем ты занимаешься "
             "(5–500 символов)."
         )
     elif field == "home_region":
         await state.set_state(ProfileEditStates.waiting_home_region)
-        await callback.message.answer(  # type: ignore[union-attr]
-            "Ок, пришли новый регион по умолчанию (2–100 символов)."
-        )
+        await msg.answer("Ок, пришли новый регион по умолчанию (2–100 символов).")
     elif field == "niches":
         await state.set_state(ProfileEditStates.waiting_niches)
-        await callback.message.answer(  # type: ignore[union-attr]
-            "Ок, пришли новый список ниш через запятую (3–7 штук)."
-        )
+        await msg.answer("Ок, пришли новый список ниш через запятую (3–7 штук).")
 
 
 @router.message(ProfileEditStates.waiting_profession, F.text)
@@ -355,16 +371,20 @@ async def search_start(message: Message, state: FSMContext, user: User) -> None:
 
 @router.callback_query(SearchStates.waiting_niche, F.data == CUSTOM_NICHE_CALLBACK)
 async def niche_custom(callback: CallbackQuery) -> None:
+    msg = await _callback_message(callback)
+    if msg is None:
+        return
     await callback.answer()
-    await callback.message.answer(  # type: ignore[union-attr]
-        "Ок, впиши нишу текстом (2–80 символов)."
-    )
+    await msg.answer("Ок, впиши нишу текстом (2–80 символов).")
 
 
 @router.callback_query(SearchStates.waiting_niche, F.data.startswith(NICHE_CALLBACK_PREFIX))
 async def niche_picked(
     callback: CallbackQuery, state: FSMContext, user: User
 ) -> None:
+    msg = await _callback_message(callback)
+    if msg is None:
+        return
     raw = (callback.data or "").removeprefix(NICHE_CALLBACK_PREFIX)
     niches = user.niches or []
     try:
@@ -374,7 +394,7 @@ async def niche_picked(
         await callback.answer("Эта ниша больше недоступна, впиши вручную.", show_alert=True)
         return
     await callback.answer()
-    await _advance_to_region(callback.message, state, user, niche)  # type: ignore[arg-type]
+    await _advance_to_region(msg, state, user, niche)
 
 
 @router.message(SearchStates.waiting_niche, F.text)
@@ -411,19 +431,23 @@ async def _advance_to_region(
 async def region_default(
     callback: CallbackQuery, state: FSMContext, user: User
 ) -> None:
+    msg = await _callback_message(callback)
+    if msg is None:
+        return
     if not user.home_region:
         await callback.answer("Регион по умолчанию не задан", show_alert=True)
         return
     await callback.answer()
-    await _show_confirmation(callback.message, state, user.home_region)  # type: ignore[arg-type]
+    await _show_confirmation(msg, state, user.home_region)
 
 
 @router.callback_query(SearchStates.waiting_region, F.data == REGION_CUSTOM_CALLBACK)
 async def region_custom(callback: CallbackQuery) -> None:
+    msg = await _callback_message(callback)
+    if msg is None:
+        return
     await callback.answer()
-    await callback.message.answer(  # type: ignore[union-attr]
-        "Ок, впиши регион текстом."
-    )
+    await msg.answer("Ок, впиши регион текстом.")
 
 
 @router.message(SearchStates.waiting_region, F.text)
@@ -489,7 +513,10 @@ async def confirm_search(
     }
 
     await state.clear()
-    assert message.chat is not None
+    if message.chat is None:
+        logger.error("confirm_search: message.chat is None, cannot run search")
+        return
+    chat_id = message.chat.id
     await message.answer(
         "🚀 Поехали! Запускаю сбор и анализ.\n\n"
         f"Запрос: «{html_escape(niche)}» / регион: «{html_escape(region)}».\n"
@@ -498,7 +525,7 @@ async def confirm_search(
     )
 
     task = asyncio.create_task(
-        run_search(query.id, message.chat.id, bot, user_profile=user_profile)
+        run_search(query.id, chat_id, bot, user_profile=user_profile)
     )
     _background_tasks.add(task)
 
