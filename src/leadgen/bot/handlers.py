@@ -11,6 +11,8 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
+from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from leadgen.analysis import AIAnalyzer
@@ -59,6 +61,11 @@ from leadgen.bot.states import (
 )
 from leadgen.db.models import SearchQuery, User
 from leadgen.pipeline import run_search
+from leadgen.utils.metrics import (
+    active_background_tasks,
+    rate_limited_total,
+)
+from leadgen.utils.rate_limit import search_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -1080,18 +1087,61 @@ async def confirm_search(
         )
         return
 
-    if user.queries_used >= user.queries_limit:
+    # Soft rate-limit on the "запустить поиск" action itself so a user
+    # double-tapping or spamming doesn't burn their quota + our Google
+    # API budget before any DB-level guard fires.
+    if not search_limiter.check_and_record(user.id):
+        retry = int(search_limiter.retry_after(user.id))
+        rate_limited_total.labels(action="search").inc()
+        await message.answer(
+            f"⏳ Слишком часто запускаешь поиск. Попробуй через {retry}с.",
+            reply_markup=main_menu(),
+        )
+        return
+
+    # Atomic check-and-decrement of the per-period quota. Without the
+    # RETURNING clause two concurrent handlers could both see
+    # queries_used=N-1 and both succeed, silently over-running the limit.
+    result = await session.execute(
+        update(User)
+        .where(User.id == user.id)
+        .where(User.queries_used < User.queries_limit)
+        .values(queries_used=User.queries_used + 1)
+        .returning(User.queries_used)
+    )
+    updated_row = result.first()
+    if updated_row is None:
         await state.clear()
         await message.answer(
             "🚫 Лимит запросов исчерпан.",
             reply_markup=main_menu(),
         )
         return
+    # Keep the in-memory object in sync with the write we just committed.
+    user.queries_used = updated_row[0]
 
     query = SearchQuery(user_id=user.id, niche=niche, region=region)
     session.add(query)
-    user.queries_used += 1
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        # Partial unique index (uq_user_active_search) says this user
+        # already has an in-flight search. Roll back the quota bump we
+        # just made and let them know.
+        await session.rollback()
+        await session.execute(
+            update(User)
+            .where(User.id == user.id)
+            .values(queries_used=User.queries_used - 1)
+        )
+        await session.commit()
+        await state.clear()
+        await message.answer(
+            "⌛️ У тебя уже идёт поиск — дождись его окончания, "
+            "и можно будет запустить следующий.",
+            reply_markup=main_menu(),
+        )
+        return
     await session.refresh(query)
 
     # Snapshot user profile so background task doesn't depend on session lifetime
@@ -1128,17 +1178,21 @@ async def confirm_search(
         run_search(query.id, chat_id, bot, user_profile=user_profile)
     )
     _background_tasks.add(task)
+    active_background_tasks.inc()
 
     def _on_done(t: asyncio.Task) -> None:
-        _background_tasks.discard(t)
-        if t.cancelled():
-            logger.warning("run_search task for query %s was cancelled", query.id)
-            return
-        exc = t.exception()
-        if exc is not None:
-            logger.exception(
-                "run_search task for query %s failed", query.id, exc_info=exc
-            )
+        try:
+            if t.cancelled():
+                logger.warning("run_search task for query %s was cancelled", query.id)
+                return
+            exc = t.exception()
+            if exc is not None:
+                logger.exception(
+                    "run_search task for query %s failed", query.id, exc_info=exc
+                )
+        finally:
+            _background_tasks.discard(t)
+            active_background_tasks.dec()
 
     task.add_done_callback(_on_done)
 

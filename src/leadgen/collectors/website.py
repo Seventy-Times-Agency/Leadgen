@@ -43,6 +43,57 @@ PHONE_RE = re.compile(
     r"(?:\+7|8|\+\d{1,3})[\s\-()]*\d{2,4}[\s\-()]*\d{2,4}[\s\-()]*\d{2,4}[\s\-()]*\d{0,4}"
 )
 
+# Generic inbox names (local-part) that rarely reach a decision-maker.
+# Filtered out so the lead card shows something actually useful to write to.
+_GENERIC_EMAIL_LOCALS = frozenset(
+    {
+        "info",
+        "hello",
+        "hi",
+        "contact",
+        "contacts",
+        "support",
+        "help",
+        "admin",
+        "office",
+        "mail",
+        "email",
+        "team",
+        "noreply",
+        "no-reply",
+        "donotreply",
+        "do-not-reply",
+        "reply",
+        "sales",  # kept loose; a user selling to sales leads might disagree
+        "enquiry",
+        "enquiries",
+        "inquiry",
+        "inquiries",
+        "feedback",
+        "marketing",
+        "pr",
+        "webmaster",
+        "postmaster",
+        "abuse",
+        "privacy",
+        "legal",
+    }
+)
+
+
+def _is_generic_email(email: str) -> bool:
+    local = email.split("@", 1)[0].lower()
+    # Match on exact local-part or local that starts with a generic name
+    # followed by a common separator ("info-uk", "support.en", "sales+usa").
+    if local in _GENERIC_EMAIL_LOCALS:
+        return True
+    for prefix in _GENERIC_EMAIL_LOCALS:
+        if local.startswith(prefix) and len(local) > len(prefix):
+            sep = local[len(prefix)]
+            if sep in "-_.+":
+                return True
+    return False
+
 PRICING_HINTS = ("цен", "тариф", "прайс", "стоимост", "price", "pricing")
 PORTFOLIO_HINTS = ("портфолио", "наши работ", "кейс", "portfolio", "case")
 BLOG_HINTS = ("блог", "новост", "стать", "blog", "news", "article")
@@ -178,7 +229,14 @@ class WebsiteCollector:
         info.main_text = self._extract_main_text(combined_soup)[:2000]
 
         info.social_links = self._extract_socials(combined_html)
-        info.emails = self._dedupe_limit(EMAIL_RE.findall(combined_html), 7)
+        raw_emails = EMAIL_RE.findall(combined_html)
+        # Drop info@/noreply@-style addresses: they rarely reach the
+        # decision-maker we're actually trying to contact.
+        real_emails = [e for e in raw_emails if not _is_generic_email(e)]
+        # Keep a small generic fallback only if we found nothing personal.
+        if not real_emails and raw_emails:
+            real_emails = raw_emails[:1]
+        info.emails = self._dedupe_limit(real_emails, 7)
 
         phones = [
             re.sub(r"\s+", " ", p).strip()

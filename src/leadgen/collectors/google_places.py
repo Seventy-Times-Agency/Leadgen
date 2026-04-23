@@ -16,6 +16,7 @@ import httpx
 
 from leadgen.config import get_settings
 from leadgen.utils import retry_async
+from leadgen.utils.secrets import sanitize
 
 logger = logging.getLogger(__name__)
 
@@ -139,19 +140,25 @@ class GooglePlacesCollector:
                 )
 
                 if resp.status_code != 200:
+                    safe_body = sanitize(resp.text[:500])
                     logger.error(
                         "google_places.error status=%s body=%s",
                         resp.status_code,
-                        resp.text[:500],
+                        safe_body,
                     )
                     raise GooglePlacesError(
-                        f"Google Places API returned {resp.status_code}: {resp.text[:200]}"
+                        f"Google Places API returned {resp.status_code}: "
+                        f"{sanitize(resp.text[:200])}"
                     )
 
                 data = resp.json()
                 for place in data.get("places", []) or []:
                     lead = self._parse_place(place)
-                    if not lead.source_id or lead.source_id in seen_ids:
+                    if lead is None:
+                        # Closed-permanently / closed-temporarily businesses
+                        # or rows missing an id — not useful to the user.
+                        continue
+                    if lead.source_id in seen_ids:
                         continue
                     seen_ids.add(lead.source_id)
                     leads.append(lead)
@@ -183,35 +190,59 @@ class GooglePlacesCollector:
             "Accept-Language": self.language,
         }
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async def do_details_request() -> httpx.Response:
-                return await client.get(url, headers=headers)
+        # Tighter timeout per place — we're enriching up to ~50 in parallel
+        # and one stuck request shouldn't stall the whole batch.
+        per_request_timeout = min(8.0, self.timeout)
 
-            resp = await retry_async(
-                do_details_request,
-                retries=get_settings().http_retries,
-                base_delay=get_settings().http_retry_base_delay,
-                retry_on=(httpx.HTTPError,),
-            )
+        async with httpx.AsyncClient(timeout=per_request_timeout) as client:
+            async def do_details_request() -> httpx.Response:
+                return await asyncio.wait_for(
+                    client.get(url, headers=headers),
+                    timeout=per_request_timeout,
+                )
+
+            try:
+                resp = await retry_async(
+                    do_details_request,
+                    retries=get_settings().http_retries,
+                    base_delay=get_settings().http_retry_base_delay,
+                    retry_on=(httpx.HTTPError, TimeoutError),
+                )
+            except TimeoutError as exc:
+                raise GooglePlacesError(
+                    f"Place Details timed out after {per_request_timeout}s"
+                ) from exc
+
             if resp.status_code != 200:
+                safe_body = sanitize(resp.text[:300])
                 logger.warning(
                     "google_places.details_error status=%s body=%s",
                     resp.status_code,
-                    resp.text[:300],
+                    safe_body,
                 )
                 raise GooglePlacesError(
-                    f"Place Details returned {resp.status_code}: {resp.text[:200]}"
+                    f"Place Details returned {resp.status_code}: "
+                    f"{sanitize(resp.text[:200])}"
                 )
             return resp.json()
 
-    def _parse_place(self, place: dict[str, Any]) -> RawLead:
+    def _parse_place(self, place: dict[str, Any]) -> RawLead | None:
+        # Skip rows we can't use downstream: closed businesses and anything
+        # without a stable source id (we need it for dedup + details).
+        business_status = (place.get("businessStatus") or "").upper()
+        if business_status in {"CLOSED_PERMANENTLY", "CLOSED_TEMPORARILY"}:
+            return None
+        source_id = place.get("id")
+        if not source_id:
+            return None
+
         display_name = place.get("displayName") or {}
         primary_type_display = place.get("primaryTypeDisplayName") or {}
         location = place.get("location") or {}
 
         return RawLead(
             source=self.source,
-            source_id=place.get("id") or "",
+            source_id=source_id,
             name=display_name.get("text") or "",
             website=place.get("websiteUri"),
             phone=place.get("internationalPhoneNumber") or place.get("nationalPhoneNumber"),

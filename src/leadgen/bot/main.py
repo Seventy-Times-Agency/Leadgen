@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from aiogram import Bot, Dispatcher
@@ -13,6 +14,7 @@ from leadgen.bot.middlewares import DbSessionMiddleware
 from leadgen.config import get_settings
 from leadgen.db.session import init_db, session_factory
 from leadgen.pipeline import recover_stale_queries
+from leadgen.web import start_health_server
 
 logger = logging.getLogger(__name__)
 
@@ -90,9 +92,21 @@ async def run() -> None:
     except Exception:
         logger.exception("Startup recovery failed; continuing anyway")
 
+    # Start the HTTP side (health + metrics) alongside polling. Binding
+    # before entering polling means Railway probes have something to hit
+    # within the first seconds of startup.
+    health_runner = None
+    try:
+        health_runner = await start_health_server()
+    except Exception:
+        logger.exception("Failed to start health server; continuing without it")
+
     logger.info("🚀 Entering polling loop — bot is now live")
     try:
         await dp.start_polling(bot)
     finally:
         logger.info("🛑 Polling stopped, closing bot session")
+        if health_runner is not None:
+            with contextlib.suppress(Exception):
+                await health_runner.cleanup()
         await bot.session.close()

@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from html import escape as html_escape
@@ -27,9 +28,17 @@ from leadgen.collectors import GooglePlacesCollector, RawLead
 from leadgen.collectors.google_places import GooglePlacesError
 from leadgen.config import get_settings
 from leadgen.db import Lead, SearchQuery, session_factory
+from leadgen.db.models import UserSeenLead
 from leadgen.export.excel import build_excel
 from leadgen.pipeline.enrichment import enrich_leads
 from leadgen.pipeline.progress import ProgressReporter
+from leadgen.utils.metrics import (
+    leads_discovered_total,
+    leads_persisted_total,
+    leads_skipped_total,
+    search_duration_seconds,
+    searches_total,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +65,7 @@ async def run_search(
         )
     except TimeoutError:
         logger.error("run_search TIMEOUT after %ds for query %s", SEARCH_TIMEOUT_SEC, query_id)
+        searches_total.labels(status="timeout").inc()
         async with session_factory() as session:
             await session.execute(
                 update(SearchQuery)
@@ -93,6 +103,7 @@ async def _run_search_impl(
     )
     progress_id: int | None = None
     reporter: ProgressReporter | None = None
+    started_at = time.monotonic()
     try:
         progress_msg = await bot.send_message(
             chat_id,
@@ -110,8 +121,12 @@ async def _run_search_impl(
             query.status = "running"
             await session.commit()
             niche, region = query.niche, query.region
+            user_id = query.user_id
         logger.info(
-            "run_search: query loaded niche=%r region=%r", niche, region
+            "run_search: query loaded niche=%r region=%r user=%s",
+            niche,
+            region,
+            user_id,
         )
 
         # 1. Discovery
@@ -123,6 +138,7 @@ async def _run_search_impl(
         logger.info("run_search: calling google places search")
         raw_leads: list[RawLead] = await collector.search(niche=niche, region=region)
         logger.info("run_search: google places returned %d leads", len(raw_leads))
+        leads_discovered_total.labels(source="google_places").inc(len(raw_leads))
         raw_leads = raw_leads[: get_settings().max_results_per_query]
 
         if not raw_leads:
@@ -141,16 +157,35 @@ async def _run_search_impl(
                     )
                 )
                 await session.commit()
+            searches_total.labels(status="no_results").inc()
             return
 
-        # 2. Persist raw leads
+        # 2. Persist raw leads — with cross-run dedup against user_seen_leads.
+        # Each lead the user has ever received before is skipped so repeat
+        # searches surface new companies instead of the same base twice.
         async with session_factory() as session:
-            seen: set[str] = set()
+            incoming_source_ids = [r.source_id for r in raw_leads if r.source_id]
+            seen_rows = await session.execute(
+                select(UserSeenLead.source_id)
+                .where(UserSeenLead.user_id == user_id)
+                .where(UserSeenLead.source == "google_places")
+                .where(UserSeenLead.source_id.in_(incoming_source_ids))
+            )
+            already_seen: set[str] = {row[0] for row in seen_rows.all()}
+
+            batch_seen: set[str] = set()
             rows: list[Lead] = []
+            seen_to_insert: list[dict[str, Any]] = []
+            duplicates = 0
             for r in raw_leads:
-                if not r.source_id or r.source_id in seen:
+                if not r.source_id or r.source_id in batch_seen:
+                    leads_skipped_total.labels(reason="missing_source_id").inc()
                     continue
-                seen.add(r.source_id)
+                if r.source_id in already_seen:
+                    duplicates += 1
+                    leads_skipped_total.labels(reason="duplicate").inc()
+                    continue
+                batch_seen.add(r.source_id)
                 rows.append(
                     Lead(
                         query_id=query_id,
@@ -168,8 +203,57 @@ async def _run_search_impl(
                         raw=r.raw,
                     )
                 )
+                seen_to_insert.append(
+                    {
+                        "user_id": user_id,
+                        "source": r.source,
+                        "source_id": r.source_id,
+                    }
+                )
+
+            if not rows:
+                # Everything we found is already in this user's history.
+                logger.info(
+                    "run_search: all %d leads were dupes for user %s",
+                    duplicates,
+                    user_id,
+                )
+                async with session_factory() as s2:
+                    await s2.execute(
+                        update(SearchQuery)
+                        .where(SearchQuery.id == query_id)
+                        .values(
+                            status="done",
+                            finished_at=datetime.now(timezone.utc),
+                            leads_count=0,
+                        )
+                    )
+                    await s2.commit()
+                await reporter.finish(
+                    f"Все {duplicates} компаний по этому запросу ты уже получал(а). "
+                    "Попробуй другую нишу или регион, чтобы найти новые."
+                )
+                searches_total.labels(status="no_results").inc()
+                return
+
             session.add_all(rows)
+            # Persist the "seen" records in the same transaction so dedup
+            # stays consistent with what we've just committed to the user.
+            if seen_to_insert:
+                from sqlalchemy.dialects.postgresql import insert as pg_insert
+                stmt = pg_insert(UserSeenLead).values(seen_to_insert)
+                stmt = stmt.on_conflict_do_nothing(
+                    index_elements=["user_id", "source", "source_id"]
+                )
+                await session.execute(stmt)
             await session.commit()
+            leads_persisted_total.inc(len(rows))
+            logger.info(
+                "run_search: persisted %d leads (%d duplicates filtered) for user %s",
+                len(rows),
+                duplicates,
+                user_id,
+            )
 
             # Pick top-N for enrichment by Google rating + reviews count
             result = await session.execute(
@@ -245,9 +329,12 @@ async def _run_search_impl(
 
         # 6. Delivery
         await _deliver(bot, chat_id, niche, region, final_leads, stats, insights)
+        searches_total.labels(status="done").inc()
+        search_duration_seconds.observe(time.monotonic() - started_at)
 
     except GooglePlacesError as exc:
         logger.exception("run_search: google places failed for query %s", query_id)
+        searches_total.labels(status="failed").inc()
         async with session_factory() as session:
             await session.execute(
                 update(SearchQuery)
@@ -270,6 +357,7 @@ async def _run_search_impl(
             await bot.send_message(chat_id, error_text)
     except Exception as exc:  # noqa: BLE001
         logger.exception("run_search: failed for query %s", query_id)
+        searches_total.labels(status="failed").inc()
         async with session_factory() as session:
             await session.execute(
                 update(SearchQuery)

@@ -131,3 +131,24 @@ class Lead(Base):
     )
 
     query: Mapped[SearchQuery] = relationship(back_populates="leads")
+
+
+class UserSeenLead(Base):
+    """Per-user history of every (source, source_id) ever delivered.
+
+    Lets us dedup results so re-running the same search (or an overlapping
+    one) doesn't hand the same companies back to the user. The raw ``Lead``
+    rows get deleted after each run for storage hygiene; this table is the
+    lightweight long-lived memory.
+    """
+
+    __tablename__ = "user_seen_leads"
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    source: Mapped[str] = mapped_column(String(32), primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
