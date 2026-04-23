@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     http_retries: int = Field(3, alias="HTTP_RETRIES")
     http_retry_base_delay: float = Field(0.7, alias="HTTP_RETRY_BASE_DELAY")
 
+    # Optional. When set, background searches are enqueued to Redis via arq
+    # instead of running in-process — required for the web API to hand off
+    # long-running jobs. When unset, the Telegram adapter falls back to
+    # ``asyncio.create_task`` so nothing breaks for the current deploy.
+    redis_url: str = Field("", alias="REDIS_URL")
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""

@@ -1,11 +1,20 @@
-"""Search orchestrator.
+"""Search orchestrator — client-agnostic core + a thin Telegram adapter.
 
-End-to-end flow:
-  1. Discover leads via Google Places Text Search.
-  2. Persist raw leads.
-  3. Enrich top-N (websites + reviews + AI analysis).
-  4. Aggregate base statistics + ask the LLM for high-level insights.
-  5. Deliver everything to the user (stats card, insights, top leads, Excel).
+End-to-end flow (``run_search_with_sinks``):
+  1. Load SearchQuery, mark running.
+  2. Discover leads via ``GooglePlacesCollector``.
+  3. Persist non-duplicate leads and remember them in ``user_seen_leads``.
+  4. Enrich the top-N (websites + reviews + AI analysis).
+  5. Aggregate stats and ask the LLM for high-level insights.
+  6. Deliver everything via the ``DeliverySink``.
+  7. Emit metrics at every terminal branch.
+
+The core talks to the outside world only through ``ProgressSink`` and
+``DeliverySink`` — no aiogram, no FastAPI, nothing client-specific. The
+Telegram-facing ``run_search`` just builds those sinks from an aiogram
+Bot + chat_id and delegates. A future web adapter will build different
+sinks (e.g. SSE-backed progress, DB-backed delivery store) and call the
+same core.
 """
 
 from __future__ import annotations
@@ -20,16 +29,16 @@ from html import escape as html_escape
 from typing import Any
 
 from aiogram import Bot
-from aiogram.types import BufferedInputFile
 from sqlalchemy import delete, select, update
 
-from leadgen.analysis import AIAnalyzer, BaseStats, aggregate_analysis
+from leadgen.adapters.telegram.sinks import TelegramDeliverySink, TelegramProgressSink
+from leadgen.analysis import AIAnalyzer, aggregate_analysis
 from leadgen.collectors import GooglePlacesCollector, RawLead
 from leadgen.collectors.google_places import GooglePlacesError
 from leadgen.config import get_settings
+from leadgen.core.services import DeliverySink, ProgressSink
 from leadgen.db import Lead, SearchQuery, session_factory
 from leadgen.db.models import UserSeenLead
-from leadgen.export.excel import build_excel
 from leadgen.pipeline.enrichment import enrich_leads
 from leadgen.pipeline.progress import ProgressReporter
 from leadgen.utils.metrics import (
@@ -42,9 +51,10 @@ from leadgen.utils.metrics import (
 
 logger = logging.getLogger(__name__)
 
-# Maximum wall-clock time for an entire search; prevents stuck tasks.
 SEARCH_TIMEOUT_SEC = 10 * 60
 
+
+# ── Telegram entry point ───────────────────────────────────────────────────
 
 async def run_search(
     query_id: uuid.UUID,
@@ -52,19 +62,38 @@ async def run_search(
     bot: Bot,
     user_profile: dict[str, Any] | None = None,
 ) -> None:
-    """Execute a lead-generation search with a hard wall-clock timeout.
+    """Telegram-facing wrapper: set up the aiogram-backed sinks and delegate.
 
-    The timeout protects against any phase (Google quota timeout, Anthropic
-    hang, runaway website) silently never returning. On timeout we mark the
-    query as failed and tell the user so they can retry.
+    Posts the initial "подготовка…" message, builds a ``ProgressReporter``
+    around it, wraps that plus the bot/chat_id into sinks, and runs the
+    core pipeline with a hard wall-clock timeout.
     """
+    progress: ProgressSink | None = None
+    delivery: DeliverySink | None = None
+    try:
+        progress_msg = await bot.send_message(
+            chat_id, "🚀 <b>Запускаю поиск</b>\n<i>подготовка…</i>"
+        )
+        reporter = ProgressReporter(bot, chat_id, progress_msg.message_id)
+        progress = TelegramProgressSink(reporter)
+        delivery = TelegramDeliverySink(bot, chat_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("run_search: failed to set up Telegram sinks")
+
     try:
         await asyncio.wait_for(
-            _run_search_impl(query_id, chat_id, bot, user_profile),
+            run_search_with_sinks(
+                query_id,
+                progress=progress,
+                delivery=delivery,
+                user_profile=user_profile,
+            ),
             timeout=SEARCH_TIMEOUT_SEC,
         )
     except TimeoutError:
-        logger.error("run_search TIMEOUT after %ds for query %s", SEARCH_TIMEOUT_SEC, query_id)
+        logger.error(
+            "run_search TIMEOUT after %ds for query %s", SEARCH_TIMEOUT_SEC, query_id
+        )
         searches_total.labels(status="timeout").inc()
         async with session_factory() as session:
             await session.execute(
@@ -88,31 +117,27 @@ async def run_search(
         await _cleanup_leads(query_id)
 
 
-async def _run_search_impl(
+# ── Client-agnostic pipeline ───────────────────────────────────────────────
+
+async def run_search_with_sinks(
     query_id: uuid.UUID,
-    chat_id: int,
-    bot: Bot,
+    progress: ProgressSink | None,
+    delivery: DeliverySink | None,
     user_profile: dict[str, Any] | None = None,
 ) -> None:
-    """Internal search body — wrapped by ``run_search`` for timeout / cleanup."""
+    """Pure pipeline — no aiogram, no web framework, only sinks.
+
+    Accepts optional sinks so batch / CLI callers can pass None and still
+    run the whole search; every sink call is routed through
+    ``_pcall`` / ``_dcall`` which silently no-op when the sink is absent.
+    """
     logger.info(
-        "run_search ENTER query_id=%s chat_id=%s profile=%s",
+        "run_search_with_sinks ENTER query_id=%s profile=%s",
         query_id,
-        chat_id,
         bool(user_profile),
     )
-    progress_id: int | None = None
-    reporter: ProgressReporter | None = None
     started_at = time.monotonic()
     try:
-        progress_msg = await bot.send_message(
-            chat_id,
-            "🚀 <b>Запускаю поиск</b>\n<i>подготовка…</i>",
-        )
-        progress_id = progress_msg.message_id
-        reporter = ProgressReporter(bot, chat_id, progress_id)
-        logger.info("run_search: progress message posted id=%s", progress_id)
-
         async with session_factory() as session:
             query = await session.get(SearchQuery, query_id)
             if query is None:
@@ -130,13 +155,10 @@ async def _run_search_impl(
         )
 
         # 1. Discovery
-        await reporter.phase(
+        await _pcall(progress, "phase",
             "🔎 <b>Шаг 1/4: ищу компании в Google Maps</b>",
             "сканирую выдачу · обычно 5–15 секунд",
         )
-        # Telegram gives us a BCP-47 language code like "en" / "ru" / "uk";
-        # the LeadCollector uses it to bias API responses so Display Names
-        # come back in a language the user can actually read.
         user_language = (user_profile or {}).get("language_code") or "en"
         collector = GooglePlacesCollector(language=user_language)
         logger.info("run_search: calling google places search")
@@ -146,7 +168,7 @@ async def _run_search_impl(
         raw_leads = raw_leads[: get_settings().max_results_per_query]
 
         if not raw_leads:
-            await reporter.finish(
+            await _pcall(progress, "finish",
                 f"По запросу «{html_escape(niche)} — {html_escape(region)}» "
                 "ничего не найдено.\nПопробуй другую формулировку или более крупный регион.",
             )
@@ -164,9 +186,7 @@ async def _run_search_impl(
             searches_total.labels(status="no_results").inc()
             return
 
-        # 2. Persist raw leads — with cross-run dedup against user_seen_leads.
-        # Each lead the user has ever received before is skipped so repeat
-        # searches surface new companies instead of the same base twice.
+        # 2. Persist + cross-run dedup
         async with session_factory() as session:
             incoming_source_ids = [r.source_id for r in raw_leads if r.source_id]
             seen_rows = await session.execute(
@@ -216,7 +236,6 @@ async def _run_search_impl(
                 )
 
             if not rows:
-                # Everything we found is already in this user's history.
                 logger.info(
                     "run_search: all %d leads were dupes for user %s",
                     duplicates,
@@ -233,7 +252,7 @@ async def _run_search_impl(
                         )
                     )
                     await s2.commit()
-                await reporter.finish(
+                await _pcall(progress, "finish",
                     f"Все {duplicates} компаний по этому запросу ты уже получал(а). "
                     "Попробуй другую нишу или регион, чтобы найти новые."
                 )
@@ -241,8 +260,6 @@ async def _run_search_impl(
                 return
 
             session.add_all(rows)
-            # Persist the "seen" records in the same transaction so dedup
-            # stays consistent with what we've just committed to the user.
             if seen_to_insert:
                 from sqlalchemy.dialects.postgresql import insert as pg_insert
                 stmt = pg_insert(UserSeenLead).values(seen_to_insert)
@@ -259,7 +276,6 @@ async def _run_search_impl(
                 user_id,
             )
 
-            # Pick top-N for enrichment by Google rating + reviews count
             result = await session.execute(
                 select(Lead)
                 .where(Lead.query_id == query_id)
@@ -272,12 +288,12 @@ async def _run_search_impl(
 
         enrich_n = min(get_settings().max_enrich_leads, len(all_leads))
 
-        # 3. Enrichment — this is the long phase, show a live progress bar.
-        await reporter.phase(
+        # 3. Enrichment
+        await _pcall(progress, "phase",
             f"🧠 <b>Шаг 2/4: анализ топ-{enrich_n} компаний</b>",
             "сайт · соцсети · отзывы · AI-оценка под твою услугу",
         )
-        await reporter.update(0, enrich_n)
+        await _pcall(progress, "update", 0, enrich_n)
         top_leads = all_leads[:enrich_n]
         enriched = await enrich_leads(
             top_leads,
@@ -285,11 +301,11 @@ async def _run_search_impl(
             niche,
             region,
             user_profile=user_profile,
-            progress_callback=reporter.update,
+            progress_callback=(progress.update if progress is not None else None),
         )
 
         # 4. Aggregation + base insights
-        await reporter.phase(
+        await _pcall(progress, "phase",
             "📊 <b>Шаг 3/4: сводный отчёт по базе</b>",
             "считаю статистику и формирую AI-инсайты",
         )
@@ -299,7 +315,7 @@ async def _run_search_impl(
             enriched, niche, region, user_profile=user_profile
         )
 
-        # 5. Persist summary
+        # 5. Persist summary + re-fetch for delivery
         async with session_factory() as session:
             await session.execute(
                 update(SearchQuery)
@@ -315,7 +331,6 @@ async def _run_search_impl(
             )
             await session.commit()
 
-            # Re-fetch sorted by AI score for delivery
             result = await session.execute(
                 select(Lead)
                 .where(Lead.query_id == query_id)
@@ -326,13 +341,17 @@ async def _run_search_impl(
             )
             final_leads = list(result.scalars().all())
 
-        await reporter.finish(
+        await _pcall(progress, "finish",
             f"✅ <b>Готово!</b> Нашёл и проанализировал <b>{len(all_leads)}</b> "
             f"компаний, из них 🔥 горячих: <b>{stats.hot_count}</b>. Отчёт ниже 👇"
         )
 
-        # 6. Delivery
-        await _deliver(bot, chat_id, niche, region, final_leads, stats, insights)
+        # 6. Delivery — through the sink; isolation is the sink's problem.
+        await _dcall(delivery, "deliver_stats", niche, region, stats)
+        await _dcall(delivery, "deliver_insights", insights)
+        await _dcall(delivery, "deliver_top_leads", final_leads)
+        await _dcall(delivery, "deliver_excel", final_leads, niche, region)
+
         searches_total.labels(status="done").inc()
         search_duration_seconds.observe(time.monotonic() - started_at)
 
@@ -355,10 +374,7 @@ async def _run_search_impl(
             "• У ключа есть доступ / квота не исчерпана\n\n"
             "Можно запустить <b>/diag</b> — проверит все интеграции разом."
         )
-        if reporter is not None:
-            await reporter.finish(error_text)
-        else:
-            await bot.send_message(chat_id, error_text)
+        await _pcall(progress, "finish", error_text)
     except Exception as exc:  # noqa: BLE001
         logger.exception("run_search: failed for query %s", query_id)
         searches_total.labels(status="failed").inc()
@@ -375,105 +391,35 @@ async def _run_search_impl(
             f"{html_escape(str(exc)[:400])}</code>\n\n"
             "Запусти <b>/diag</b> — покажет какой из сервисов сломан."
         )
-        try:
-            if reporter is not None:
-                await reporter.finish(error_text)
-            else:
-                await bot.send_message(chat_id, error_text)
-        except Exception:  # noqa: BLE001
-            logger.exception("run_search: failed to notify user")
+        await _pcall(progress, "finish", error_text)
     finally:
-        logger.info("run_search EXIT query_id=%s", query_id)
+        logger.info("run_search_with_sinks EXIT query_id=%s", query_id)
 
 
-async def _deliver(
-    bot: Bot,
-    chat_id: int,
-    niche: str,
-    region: str,
-    leads: list[Lead],
-    stats: BaseStats,
-    insights: str,
-) -> bool:
-    """Deliver the full report. Each step is isolated so a failure in one
-    part (malformed message, rate limit on one send, Excel crash) doesn't
-    swallow the rest. Returns True if at least the stats card went through.
-    """
-    any_delivered = False
+# ── Helpers ────────────────────────────────────────────────────────────────
 
-    # 1. Stats card
+async def _pcall(sink: ProgressSink | None, method: str, *args: Any) -> None:
+    """Invoke a ProgressSink method, silently skipping if no sink is bound."""
+    if sink is None:
+        return
     try:
-        stats_block = (
-            f"📊 <b>Готово: твоя база лидов собрана</b>\n"
-            f"Ниша: <b>{html_escape(niche)}</b>\n"
-            f"Регион: <b>{html_escape(region)}</b>\n\n"
-            f"Всего компаний: <b>{stats.total}</b>\n"
-            f"Проанализировано AI: <b>{stats.enriched}</b>\n"
-            f"Средний AI-скор: <b>{stats.avg_score:.0f}/100</b>\n\n"
-            f"🔥 Горячих (75+): <b>{stats.hot_count}</b>\n"
-            f"🌡 Тёплых (50-74): <b>{stats.warm_count}</b>\n"
-            f"❄️ Холодных (&lt;50): <b>{stats.cold_count}</b>\n\n"
-            f"С сайтом: <b>{stats.with_website}</b> / {stats.total}\n"
-            f"С соцсетями: <b>{stats.with_socials}</b> / {stats.total}\n"
-            f"С телефоном: <b>{stats.with_phone}</b> / {stats.total}"
-        )
-        await bot.send_message(chat_id, stats_block)
-        any_delivered = True
+        await getattr(sink, method)(*args)
     except Exception:  # noqa: BLE001
-        logger.exception("deliver: stats card failed")
+        logger.exception("progress sink %s(*args) failed", method)
 
-    # 2. AI insights
+
+async def _dcall(sink: DeliverySink | None, method: str, *args: Any) -> None:
+    """Invoke a DeliverySink method, silently skipping if no sink is bound."""
+    if sink is None:
+        return
     try:
-        insights_text = html_escape(insights or "—")
-        await bot.send_message(
-            chat_id,
-            f"💡 <b>Что это значит для продаж</b>\n\n{insights_text}",
-        )
+        await getattr(sink, method)(*args)
     except Exception:  # noqa: BLE001
-        logger.exception("deliver: insights failed")
-
-    # 3. Top lead cards (each isolated — one broken card doesn't block the rest)
-    hot_leads = [lead for lead in leads if lead.score_ai is not None][:5]
-    if hot_leads:
-        with contextlib.suppress(Exception):
-            await bot.send_message(chat_id, "🔥 <b>Топ-5 горячих лидов</b>")
-        for lead in hot_leads:
-            try:
-                await bot.send_message(
-                    chat_id,
-                    _format_lead_card(lead),
-                    disable_web_page_preview=True,
-                )
-            except Exception:  # noqa: BLE001
-                logger.exception(
-                    "deliver: lead card failed for %r (id=%s)",
-                    lead.name,
-                    lead.id,
-                )
-
-    # 4. Excel (most likely to break on weird data; never block the text report)
-    try:
-        excel_bytes = build_excel(leads)
-        filename = _safe_filename(f"leads_{niche}_{region}.xlsx")
-        await bot.send_document(
-            chat_id,
-            document=BufferedInputFile(excel_bytes, filename=filename),
-            caption=f"Полная база: {len(leads)} лидов",
-        )
-    except Exception:  # noqa: BLE001
-        logger.exception("deliver: excel export/send failed")
-        with contextlib.suppress(Exception):
-            await bot.send_message(
-                chat_id,
-                "⚠️ Excel-файл не сформировался (смотри выше текстовый отчёт). "
-                "Напиши ещё раз, если нужна выгрузка — попробую пересобрать.",
-            )
-
-    return any_delivered
+        logger.exception("delivery sink %s(*args) failed", method)
 
 
 async def _cleanup_leads(query_id: uuid.UUID) -> None:
-    """Purge lead rows for a completed query so the database doesn't accumulate
+    """Purge lead rows for a completed query so the DB doesn't accumulate
     per-search garbage across runs. The aggregated summary stays on
     SearchQuery so past searches remain visible in /profile and history.
     """
@@ -484,61 +430,3 @@ async def _cleanup_leads(query_id: uuid.UUID) -> None:
         logger.info("cleanup: deleted leads for query %s", query_id)
     except Exception:  # noqa: BLE001
         logger.exception("cleanup: failed to delete leads for query %s", query_id)
-
-
-def _format_lead_card(lead: Lead) -> str:
-    parts: list[str] = []
-
-    score_str = f" — <b>{int(lead.score_ai)}/100</b>" if lead.score_ai is not None else ""
-    parts.append(f"<b>{html_escape(lead.name)}</b>{score_str}")
-
-    if lead.tags:
-        emoji_map = {"hot": "🔥", "warm": "🌡", "cold": "❄️"}
-        badges = "".join(emoji_map.get(t, "") for t in lead.tags if t in emoji_map)
-        tags_text = ", ".join(lead.tags)
-        prefix = f"{badges} " if badges else ""
-        parts.append(f"{prefix}{html_escape(tags_text)}")
-
-    if lead.summary:
-        parts.append(f"📝 <i>{html_escape(lead.summary)}</i>")
-
-    details: list[str] = []
-    if lead.category:
-        details.append(f"🏷 {html_escape(lead.category)}")
-    if lead.rating is not None:
-        rev = f" ({lead.reviews_count})" if lead.reviews_count else ""
-        details.append(f"⭐ {lead.rating}{rev}")
-    if details:
-        parts.append(" • ".join(details))
-
-    if lead.address:
-        parts.append(f"📍 {html_escape(lead.address)}")
-    if lead.phone:
-        parts.append(f"📞 {html_escape(lead.phone)}")
-    if lead.website:
-        parts.append(f"🌐 {html_escape(lead.website)}")
-    if lead.social_links:
-        social_lines = " | ".join(
-            f"{k}: {v}" for k, v in lead.social_links.items() if v
-        )
-        if social_lines:
-            parts.append(f"📱 {html_escape(social_lines)}")
-
-    if lead.advice:
-        parts.append(f"\n💡 <b>Как зайти:</b> {html_escape(lead.advice)}")
-
-    if lead.weaknesses:
-        weak = ", ".join(lead.weaknesses[:3])
-        parts.append(f"📉 <b>Точки роста:</b> {html_escape(weak)}")
-
-    if lead.red_flags:
-        flags = ", ".join(lead.red_flags[:3])
-        parts.append(f"⚠️ <b>Риски:</b> {html_escape(flags)}")
-
-    return "\n".join(parts)
-
-
-def _safe_filename(name: str) -> str:
-    allowed = "-_.() "
-    cleaned = "".join(c if c.isalnum() or c in allowed else "_" for c in name)
-    return cleaned.replace(" ", "_")
