@@ -180,6 +180,74 @@ _NICHE_MIN = 2
 _NICHE_MAX = 60
 _NICHE_LIMIT = 7
 
+_AGE_RANGE_CODES = ["<18", "18-24", "25-34", "35-44", "45-54", "55+"]
+_BUSINESS_SIZE_CODES = ["solo", "small", "medium", "large"]
+
+# Short fillers we strip when a user types a sentence instead of a bare name
+# (e.g. "меня зовут Алексей" → "Алексей"). Case-insensitive, whole-word.
+_NAME_PREFIX_PATTERNS = [
+    r"^\s*(?:меня\s+)?зовут\s+",
+    r"^\s*зови(?:те)?\s+меня\s+",
+    r"^\s*называй(?:те)?\s+меня\s+",
+    r"^\s*я\s+",
+    r"^\s*мо[её]\s+имя\s*[—-]?\s*",
+    r"^\s*имя\s*[—-]?\s*",
+    r"^\s*пусть\s+будет\s+",
+    r"^\s*call\s+me\s+",
+    r"^\s*my\s+name\s+is\s+",
+]
+
+_REGION_PREFIX_PATTERNS = [
+    r"^\s*я\s+(?:из|живу\s+в|нахожусь\s+в)\s+",
+    r"^\s*живу\s+в\s+",
+    r"^\s*из\s+",
+    r"^\s*в\s+",
+    r"^\s*город\s+",
+]
+
+_BIZ_KEYWORDS: list[tuple[str, list[str]]] = [
+    ("solo", ["соло", "фриланс", "один", "одиночка", "сам себе", "индивидуальн", "ип без сотруд"]),
+    ("small", ["малая команда", "небольш", "пара человек", "несколько человек", "small team"]),
+    ("medium", ["средн", "компани", "агентство", "digital-агент", "студи"]),
+    ("large", ["крупн", "большая команда", "корпорац", "enterprise", "холдинг"]),
+]
+
+
+def _age_from_number(age: int) -> str | None:
+    if age < 0 or age > 120:
+        return None
+    if age < 18:
+        return "<18"
+    if age <= 24:
+        return "18-24"
+    if age <= 34:
+        return "25-34"
+    if age <= 44:
+        return "35-44"
+    if age <= 54:
+        return "45-54"
+    return "55+"
+
+
+def _biz_from_headcount(n: int) -> str:
+    if n <= 1:
+        return "solo"
+    if n <= 10:
+        return "small"
+    if n <= 50:
+        return "medium"
+    return "large"
+
+
+def _strip_patterns(text: str, patterns: list[str]) -> str:
+    out = text
+    for pat in patterns:
+        new = re.sub(pat, "", out, count=1, flags=re.IGNORECASE)
+        if new != out:
+            out = new
+            break
+    return out.strip()
+
 
 def _clean_niches(raw: Any) -> list[str]:
     """Normalise a list of niche strings from either the LLM or the heuristic."""
@@ -389,6 +457,167 @@ class AIAnalyzer:
                 except Exception:  # noqa: BLE001
                     logger.exception("analyze_batch progress_callback raised")
         return [r for r in results if r is not None]
+
+    async def _short_completion(self, system: str, user_text: str, max_tokens: int = 60) -> str | None:
+        """Small helper for single-field extraction prompts.
+
+        Returns the stripped response text, or ``None`` if the LLM is
+        unavailable or the call fails. Callers decide how to interpret the
+        result (strict match vs. best-effort).
+        """
+        if self.client is None:
+            return None
+        try:
+            async with self._sem:
+                msg = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=max_tokens,
+                    system=system,
+                    messages=[{"role": "user", "content": user_text}],
+                )
+                out = "".join(getattr(block, "text", "") for block in msg.content).strip()
+                return out or None
+        except Exception:  # noqa: BLE001
+            logger.exception("short-completion call failed")
+            return None
+
+    async def parse_name(self, text: str) -> str | None:
+        """Extract a display name from free-form text.
+
+        Examples:
+        - ``"Саша"`` → ``"Саша"``
+        - ``"меня зовут Алексей"`` → ``"Алексей"``
+        - ``"называй меня Марк пожалуйста"`` → ``"Марк"``
+        """
+        text = (text or "").strip()
+        if not text:
+            return None
+
+        # Fast path: bare name or very short input — use as-is (trimmed).
+        stripped = _strip_patterns(text, _NAME_PREFIX_PATTERNS)
+        # Trim trailing politeness: "Марк пожалуйста" → "Марк"
+        stripped = re.sub(r"[,\s]*(пожалуйста|плиз|please|спасибо)\.?\s*$", "", stripped, flags=re.IGNORECASE).strip()
+        if 2 <= len(stripped) <= 40 and " " not in stripped.strip(".,!?;:"):
+            return stripped.strip(".,!?;:")
+
+        # Slow path: ask Claude for the actual name.
+        system = (
+            "Извлеки из сообщения пользователя имя, которым он просит его "
+            "называть. Верни ТОЛЬКО имя: без кавычек, без пояснений, без "
+            "префиксов «имя:» и т.п. Если имя не указано — верни слово null. "
+            "Максимум 40 символов."
+        )
+        ai = await self._short_completion(system, text, max_tokens=40)
+        if ai:
+            candidate = ai.strip().strip('"\'«»').strip(".,!?;:")
+            if candidate and candidate.lower() != "null" and 1 <= len(candidate) <= 40:
+                return candidate
+
+        # Final fallback: truncate the original input.
+        return text[:40] if text else None
+
+    async def parse_age(self, text: str) -> str | None:
+        """Extract an age-range code ('<18' / '18-24' / ... / '55+') from text.
+
+        Returns ``None`` if the text doesn't plausibly express an age.
+        """
+        text = (text or "").strip()
+        if not text:
+            return None
+
+        # Fast path: an explicit number.
+        match = re.search(r"\b(\d{1,3})\b", text)
+        if match:
+            code = _age_from_number(int(match.group(1)))
+            if code:
+                return code
+
+        # Direct range string match.
+        for code in _AGE_RANGE_CODES:
+            if code in text:
+                return code
+
+        # LLM fallback.
+        system = (
+            "Определи возраст или возрастную группу человека из текста. "
+            "Верни СТРОГО один из кодов без кавычек и пояснений: "
+            "<18, 18-24, 25-34, 35-44, 45-54, 55+. "
+            "Если возраст неясен или пользователь отказался — верни слово null."
+        )
+        ai = await self._short_completion(system, text, max_tokens=10)
+        if ai:
+            code = ai.strip().strip(".,!?").lower()
+            if code in _AGE_RANGE_CODES:
+                return code
+        return None
+
+    async def parse_business_size(self, text: str) -> str | None:
+        """Extract a business-size code (solo/small/medium/large) from text."""
+        text = (text or "").strip()
+        if not text:
+            return None
+        low = text.lower()
+
+        # Number-of-people heuristic.
+        match = re.search(r"\b(\d{1,5})\s*(?:чел|сотр|person|people|human)", low)
+        if match:
+            return _biz_from_headcount(int(match.group(1)))
+        # Direct small number implies headcount when context hints at "team"
+        if re.search(r"\b(команд|team|компани)", low):
+            num = re.search(r"\b(\d{1,5})\b", low)
+            if num:
+                return _biz_from_headcount(int(num.group(1)))
+
+        # Keyword match (order matters — longer phrases first).
+        for code, keywords in _BIZ_KEYWORDS:
+            if any(kw in low for kw in keywords):
+                return code
+
+        # Direct code match.
+        for code in _BUSINESS_SIZE_CODES:
+            if low == code or low.startswith(code):
+                return code
+
+        # LLM fallback.
+        system = (
+            "Определи размер бизнеса пользователя из текста. Верни СТРОГО "
+            "один из кодов без кавычек: solo (соло/фрилансер, 1 чел), "
+            "small (малая команда 2–10 чел), medium (компания 10–50 чел), "
+            "large (крупный бизнес 50+ чел). Если размер неясен — null."
+        )
+        ai = await self._short_completion(system, text, max_tokens=10)
+        if ai:
+            code = ai.strip().strip(".,!?").lower()
+            if code in _BUSINESS_SIZE_CODES:
+                return code
+        return None
+
+    async def parse_region(self, text: str) -> str | None:
+        """Extract a city/region/country name from free-form text."""
+        text = (text or "").strip()
+        if not text:
+            return None
+
+        stripped = _strip_patterns(text, _REGION_PREFIX_PATTERNS)
+        # Short token after stripping → use directly.
+        if 2 <= len(stripped) <= 60 and stripped.count(" ") <= 3:
+            return stripped.rstrip(".,!?;:")
+
+        # Ask Claude to normalise a longer sentence.
+        system = (
+            "Извлеки из текста название города, региона или страны, в котором "
+            "человек ищет клиентов. Верни ТОЛЬКО название без предлогов, "
+            "без пояснений, без кавычек. Максимум 80 символов. "
+            "Если несколько мест — основное. Если нет — слово null."
+        )
+        ai = await self._short_completion(system, text, max_tokens=30)
+        if ai:
+            candidate = ai.strip().strip('"\'«»').strip(".,!?;:")
+            if candidate and candidate.lower() != "null" and 2 <= len(candidate) <= 100:
+                return candidate
+
+        # Fallback: truncated original.
+        return text[:100] if text else None
 
     async def extract_search_intent(self, description: str) -> dict[str, Any]:
         """Parse a free-form user description into structured search niches + region.

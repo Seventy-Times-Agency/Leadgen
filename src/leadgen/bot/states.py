@@ -18,9 +18,16 @@ class SearchStates(StatesGroup):
 
 
 class ProfileEditStates(StatesGroup):
-    """Used when the user wants to update a specific profile field."""
+    """Used when the user wants to update a specific profile field.
 
-    waiting_name = State()
-    waiting_profession = State()
-    waiting_home_region = State()
-    waiting_niches = State()
+    The concrete field being edited is stored in FSM data under ``field``
+    so a single handler can dispatch AI parsing for any of them.
+    """
+
+    editing = State()
+
+
+class ProfileResetStates(StatesGroup):
+    """Two-step reset: ask for confirmation before wiping the profile."""
+
+    confirming = State()

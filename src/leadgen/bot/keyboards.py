@@ -33,6 +33,11 @@ AGE_SKIP_CALLBACK = "age:__skip__"
 BIZ_SIZE_CALLBACK_PREFIX = "biz:"
 BIZ_SIZE_SKIP_CALLBACK = "biz:__skip__"
 
+# Profile reset callbacks
+PROFILE_RESET_CALLBACK = "profile:reset"
+PROFILE_RESET_CONFIRM_CALLBACK = "profile:reset:confirm"
+PROFILE_RESET_CANCEL_CALLBACK = "profile:reset:cancel"
+
 AGE_OPTIONS: list[tuple[str, str]] = [
     ("до 18", "<18"),
     ("18–24", "18-24"),
@@ -168,6 +173,30 @@ def profile_edit_menu() -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             text="🏷 Интересные ниши",
             callback_data=f"{PROFILE_EDIT_PREFIX}niches",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🗑 Сбросить профиль",
+            callback_data=PROFILE_RESET_CALLBACK,
+        )
+    )
+    return builder.as_markup()
+
+
+def profile_reset_confirm_menu() -> InlineKeyboardMarkup:
+    """Two-button confirmation for destructive profile wipe."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="🗑 Да, сбросить всё",
+            callback_data=PROFILE_RESET_CONFIRM_CALLBACK,
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="↩️ Отмена",
+            callback_data=PROFILE_RESET_CANCEL_CALLBACK,
         )
     )
     return builder.as_markup()
