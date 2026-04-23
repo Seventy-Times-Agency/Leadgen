@@ -15,5 +15,13 @@ from leadgen.core.services.billing_service import (
     BillingService,
     QuotaCheck,
 )
+from leadgen.core.services.sinks import DeliverySink, NullSink, ProgressSink
 
-__all__ = ["BillingError", "BillingService", "QuotaCheck"]
+__all__ = [
+    "BillingError",
+    "BillingService",
+    "DeliverySink",
+    "NullSink",
+    "ProgressSink",
+    "QuotaCheck",
+]
