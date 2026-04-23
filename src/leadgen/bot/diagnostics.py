@@ -117,13 +117,21 @@ async def check_telegram(bot: Bot) -> CheckResult:
 
 
 async def check_google_places() -> CheckResult:
-    """Do a real small Google Places search and report count + status code."""
+    """Do a real small Google Places search and report count + status code.
+
+    Uses an English-language query against a dense US metro so the smoke
+    test stays representative of the target market — if this returns 0,
+    something's definitely wrong with the key/API/quota regardless of
+    locale concerns.
+    """
     start = time.monotonic()
     try:
-        collector = GooglePlacesCollector(page_size=5, max_pages=1, timeout=15.0)
-        leads = await collector.search(niche="кофейня", region="Москва")
+        collector = GooglePlacesCollector(
+            page_size=5, max_pages=1, timeout=15.0, language="en"
+        )
+        leads = await collector.search(niche="coffee shop", region="New York")
         ok = len(leads) > 0
-        detail = f"поисковый ответ: {len(leads)} компаний для «кофейня Москва»"
+        detail = f"поисковый ответ: {len(leads)} компаний для «coffee shop New York»"
         if not ok:
             detail += " (0 результатов — возможно API не включён или квота исчерпана)"
     except GooglePlacesError as exc:

@@ -402,13 +402,34 @@ async def onboarding_biz_picked(callback: CallbackQuery, state: FSMContext) -> N
 
 @router.message(OnboardingStates.waiting_profession, F.text)
 async def onboarding_profession(message: Message, state: FSMContext) -> None:
-    text = (message.text or "").strip()
-    if len(text) < 5 or len(text) > 500:
+    raw = (message.text or "").strip()
+    if len(raw) < 5 or len(raw) > 500:
         await message.answer(
             "Опиши от 5 до 500 символов — пару предложений о себе. Попробуй ещё раз."
         )
         return
-    await state.update_data(profession=text)
+
+    thinking = await message.answer("✍️ Привожу описание в порядок...")
+    try:
+        analyzer = AIAnalyzer()
+        clean = await analyzer.normalize_profession(raw)
+    except Exception:
+        logger.exception("onboarding_profession: normalize failed")
+        clean = raw
+    with contextlib.suppress(Exception):
+        await thinking.delete()
+
+    # Store both: the polished version drives AI prompts (profession), the
+    # original is kept verbatim for the user's own reference and for
+    # editing later (service_description).
+    await state.update_data(profession=clean, service_description=raw)
+
+    if clean != raw:
+        await message.answer(
+            "Понял тебя так:\n"
+            f"<i>{html_escape(clean)}</i>\n\n"
+            "Если что — потом поправим через профиль."
+        )
     await message.answer(ONBOARDING_REGION_PROMPT)
     await state.set_state(OnboardingStates.waiting_home_region)
 
@@ -472,8 +493,11 @@ async def onboarding_niches(
     user.display_name = data.get("display_name") or user.first_name
     user.age_range = data.get("age_range")
     user.business_size = data.get("business_size")
+    # ``profession`` is the AI-polished version used in every lead analysis
+    # prompt; ``service_description`` keeps the user's original phrasing
+    # so they can see/edit exactly what they typed.
     user.profession = data.get("profession")
-    user.service_description = data.get("profession")  # short+long share same text for MVP
+    user.service_description = data.get("service_description") or data.get("profession")
     user.home_region = data.get("home_region")
     user.niches = niches
     user.onboarded_at = datetime.now(timezone.utc)
@@ -719,7 +743,8 @@ async def profile_edit_text(
         if len(raw) < 5 or len(raw) > 500:
             error_reply = "5–500 символов — опиши пару предложений."
         else:
-            user.profession = raw
+            clean = await analyzer.normalize_profession(raw)
+            user.profession = clean
             user.service_description = raw
     elif field == "home_region":
         value = await analyzer.parse_region(raw)
@@ -1180,6 +1205,9 @@ async def confirm_search(
         "service_description": user.service_description,
         "home_region": user.home_region,
         "niches": list(user.niches or []),
+        # Telegram language code — drives Google Places languageCode so
+        # result display names come back in a script the user reads.
+        "language_code": user.language_code,
     }
 
     await state.clear()

@@ -619,6 +619,49 @@ class AIAnalyzer:
         # Fallback: truncated original.
         return text[:100] if text else None
 
+    async def normalize_profession(self, text: str) -> str:
+        """Rewrite a user's self-description into a tight, well-formed sentence.
+
+        The user might type something like
+        "Мы им начинающее агентство Seventy Times мы разрабатываем сайты
+        настраиваем таргетированную рекламу создаем и ботов и автоматизации
+        для процессов бизнеса" — we persist this as-is in
+        ``service_description`` (user's own words) but use the normalised
+        version as ``profession`` in every AI prompt. Cleaner input →
+        tighter AI output → better lead recommendations.
+
+        Without an Anthropic key we return the trimmed original — the rest
+        of the pipeline is designed to survive raw text anyway.
+        """
+        text = (text or "").strip()
+        if not text:
+            return text
+
+        if self.client is None:
+            return text
+
+        system = (
+            "Ты — редактор. Тебе приходит описание профессии или услуги, "
+            "которое пользователь написал сам — часто со сбитой грамматикой "
+            "и пунктуацией. Перепиши этот текст в 1–2 чёткие предложения, "
+            "сохранив ВСЕ детали: название компании/бренда, конкретные "
+            "услуги, формат работы. Не добавляй того, чего нет в оригинале, "
+            "не убирай суть. Пиши на том же языке, что и оригинал. "
+            "Верни ТОЛЬКО переписанный текст, без пояснений, без кавычек, "
+            "без префиксов «вот переписанное:» и т.п."
+        )
+        rewritten = await self._short_completion(system, text, max_tokens=300)
+        if not rewritten:
+            return text
+        # Trim common wrapping artefacts.
+        cleaned = rewritten.strip().strip('"\'«»').strip()
+        if not cleaned:
+            return text
+        # Guard against the model ignoring instructions and returning a blob.
+        if len(cleaned) > len(text) * 2 + 100:
+            return text
+        return cleaned
+
     async def extract_search_intent(self, description: str) -> dict[str, Any]:
         """Parse a free-form user description into structured search niches + region.
 

@@ -90,12 +90,23 @@ class GooglePlacesCollector:
     def __init__(
         self,
         api_key: str | None = None,
-        language: str = "ru",
-        region_code: str = "RU",
+        language: str | None = "en",
+        region_code: str | None = None,
         page_size: int = 20,
         max_pages: int = 3,
         timeout: float = 30.0,
     ) -> None:
+        """Construct a Places collector.
+
+        ``language`` defaults to ``"en"`` so results come back in English
+        regardless of the user's Telegram locale — appropriate for our
+        US/EU/CIS-ex-RU target market. ``region_code`` defaults to
+        ``None`` (no regional bias): a previous hard-coded ``"RU"`` was
+        skewing English queries like "roofing" toward Russian results
+        (a single university showed up in one real search). The bias
+        can still be set explicitly per-call if a caller has strong
+        signal about which market to prefer.
+        """
         self.api_key = api_key or get_settings().google_places_api_key
         if not self.api_key:
             raise GooglePlacesError("GOOGLE_PLACES_API_KEY is not configured")
@@ -110,7 +121,12 @@ class GooglePlacesCollector:
         if not query:
             return []
 
-        logger.info("google_places.search start query=%r", query)
+        logger.info(
+            "google_places.search start query=%r language=%r region_code=%r",
+            query,
+            self.language,
+            self.region_code,
+        )
 
         headers = {
             "Content-Type": "application/json",
@@ -119,10 +135,16 @@ class GooglePlacesCollector:
         }
         body: dict[str, Any] = {
             "textQuery": query,
-            "languageCode": self.language,
-            "regionCode": self.region_code,
             "pageSize": self.page_size,
         }
+        # Only bias the result set when the caller actually knows which
+        # market/language they want — unbiased search on a fully-formed
+        # query ("roofing Los Angeles") produces better results than
+        # hinting the wrong locale.
+        if self.language:
+            body["languageCode"] = self.language
+        if self.region_code:
+            body["regionCode"] = self.region_code
 
         leads: list[RawLead] = []
         seen_ids: set[str] = set()
@@ -187,8 +209,9 @@ class GooglePlacesCollector:
         headers = {
             "X-Goog-Api-Key": self.api_key,
             "X-Goog-FieldMask": DETAILS_FIELD_MASK,
-            "Accept-Language": self.language,
         }
+        if self.language:
+            headers["Accept-Language"] = self.language
 
         # Tighter timeout per place — we're enriching up to ~50 in parallel
         # and one stuck request shouldn't stall the whole batch.

@@ -134,7 +134,11 @@ async def _run_search_impl(
             "🔎 <b>Шаг 1/4: ищу компании в Google Maps</b>",
             "сканирую выдачу · обычно 5–15 секунд",
         )
-        collector = GooglePlacesCollector()
+        # Telegram gives us a BCP-47 language code like "en" / "ru" / "uk";
+        # the LeadCollector uses it to bias API responses so Display Names
+        # come back in a language the user can actually read.
+        user_language = (user_profile or {}).get("language_code") or "en"
+        collector = GooglePlacesCollector(language=user_language)
         logger.info("run_search: calling google places search")
         raw_leads: list[RawLead] = await collector.search(niche=niche, region=region)
         logger.info("run_search: google places returned %d leads", len(raw_leads))
