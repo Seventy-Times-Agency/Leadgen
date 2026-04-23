@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
+import os
 
+import uvicorn
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -10,12 +13,12 @@ from aiogram.exceptions import TelegramUnauthorizedError
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import ErrorEvent
 
+from leadgen.adapters.web_api import create_app
 from leadgen.bot.handlers import router
 from leadgen.bot.middlewares import DbSessionMiddleware
 from leadgen.config import get_settings
 from leadgen.db.session import init_db, session_factory
 from leadgen.pipeline import recover_stale_queries
-from leadgen.web import start_health_server
 
 logger = logging.getLogger(__name__)
 
@@ -115,21 +118,28 @@ async def run() -> None:
     except Exception:
         logger.exception("Startup recovery failed; continuing anyway")
 
-    # Start the HTTP side (health + metrics) alongside polling. Binding
-    # before entering polling means Railway probes have something to hit
-    # within the first seconds of startup.
-    health_runner = None
-    try:
-        health_runner = await start_health_server()
-    except Exception:
-        logger.exception("Failed to start health server; continuing without it")
+    # FastAPI side serves /health, /metrics and /api/v1/* on $PORT; uvicorn
+    # runs as an asyncio task in the same event loop as the aiogram
+    # polling loop. One container, two surfaces, shared DB + metrics.
+    port = int(os.environ.get("PORT", "8080"))
+    web_app = create_app()
+    web_config = uvicorn.Config(
+        web_app,
+        host="0.0.0.0",  # noqa: S104
+        port=port,
+        log_level="info",
+        access_log=False,
+    )
+    web_server = uvicorn.Server(web_config)
+    web_task = asyncio.create_task(web_server.serve(), name="leadgen-web")
+    logger.info("🌐 Web API listening on 0.0.0.0:%d", port)
 
     logger.info("🚀 Entering polling loop — bot is now live")
     try:
         await dp.start_polling(bot)
     finally:
-        logger.info("🛑 Polling stopped, closing bot session")
-        if health_runner is not None:
-            with contextlib.suppress(Exception):
-                await health_runner.cleanup()
+        logger.info("🛑 Polling stopped, shutting down web + bot")
+        web_server.should_exit = True
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(web_task, timeout=10)
         await bot.session.close()

@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     # ``asyncio.create_task`` so nothing breaks for the current deploy.
     redis_url: str = Field("", alias="REDIS_URL")
 
+    # Web API: single shared API key that the frontend sends as
+    # ``X-API-Key`` on every request. Simple enough for agency-internal
+    # use; real per-user auth (magic link + session cookie) lands once
+    # public sign-up is opened.
+    web_api_key: str = Field("", alias="WEB_API_KEY")
+    # Comma-separated origins Vercel will hit from. Empty → no CORS.
+    web_cors_origins: str = Field("", alias="WEB_CORS_ORIGINS")
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""

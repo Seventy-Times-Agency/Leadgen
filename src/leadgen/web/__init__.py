@@ -1,5 +1,8 @@
-"""Lightweight HTTP surface: /health for Railway probes and /metrics for Prometheus."""
+"""Deprecated: the aiohttp-based ``/health`` + ``/metrics`` server has
+moved to ``leadgen.adapters.web_api``. This module is kept only as a
+forwarding alias until every import site has been updated.
+"""
 
-from leadgen.web.health import create_app, start_health_server
+from leadgen.adapters.web_api import create_app
 
-__all__ = ["create_app", "start_health_server"]
+__all__ = ["create_app"]
