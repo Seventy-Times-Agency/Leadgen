@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     # Comma-separated origins Vercel will hit from. Empty → no CORS.
     web_cors_origins: str = Field("", alias="WEB_CORS_ORIGINS")
 
+    # Monetisation kill switch. While we're still polishing the product
+    # and using it internally, billing enforcement stays OFF — every
+    # search succeeds regardless of ``queries_limit``. When we flip this
+    # on (BILLING_ENFORCED=true in Railway vars) the existing quota
+    # machinery starts gating again, no code changes needed.
+    billing_enforced: bool = Field(False, alias="BILLING_ENFORCED")
+
     @property
     def sqlalchemy_url(self) -> str:
         """Normalize Railway-style postgres:// URLs to the async driver."""

@@ -16,3 +16,9 @@ tests
 PLAN.md
 BOT_CONCEPT.md
 PRODUCT_READINESS_AUDIT.md
+
+# Next.js frontend is a separate Vercel project — Railway builds only
+# the Python backend, so keep node_modules and the JS build outputs
+# outside the Docker context.
+frontend
+

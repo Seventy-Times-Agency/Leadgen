@@ -14,6 +14,7 @@ from enum import StrEnum
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from leadgen.config import get_settings
 from leadgen.db.models import User
 
 
@@ -60,7 +61,31 @@ class BillingService:
         concurrent callers can't both slip past a per-user limit. If the
         WHERE clause filters them out, nothing is updated and we report
         exhausted without mutating anything.
+
+        When ``BILLING_ENFORCED=false`` (the default while we're iterating
+        on the product internally), this short-circuits to always allow
+        and still bumps the counter so analytics keeps working.
         """
+        settings = get_settings()
+        if not settings.billing_enforced:
+            # Counter increments for usage telemetry; the verdict is
+            # always ALLOWED so nobody gets blocked. Flip the env flag
+            # to turn real gating back on.
+            result = await self.session.execute(
+                update(User)
+                .where(User.id == user_id)
+                .values(queries_used=User.queries_used + 1)
+                .returning(User.queries_used, User.queries_limit)
+            )
+            row = result.first()
+            if row is None:
+                raise BillingError(f"user {user_id} not found")
+            return QuotaCheck(
+                verdict=QuotaVerdict.ALLOWED,
+                queries_used=row[0],
+                queries_limit=row[1],
+            )
+
         result = await self.session.execute(
             update(User)
             .where(User.id == user_id)
