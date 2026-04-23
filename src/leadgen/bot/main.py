@@ -8,6 +8,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramUnauthorizedError
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import ErrorEvent
 
 from leadgen.bot.handlers import router
 from leadgen.bot.middlewares import DbSessionMiddleware
@@ -78,8 +79,30 @@ async def run() -> None:
         logger.exception("Webhook cleanup failed; polling may not receive updates")
 
     dp = Dispatcher(storage=MemoryStorage())
-    dp.message.middleware(DbSessionMiddleware(session_factory))
+    # DbSession + user injection must fire for BOTH message and callback
+    # events; otherwise inline-button handlers see `user=None` / `session=None`,
+    # blow up on the first attribute access, and — because `callback.answer()`
+    # is never reached — the user sees a permanent spinner on every button tap.
+    db_mw = DbSessionMiddleware(session_factory)
+    dp.message.middleware(db_mw)
+    dp.callback_query.middleware(db_mw)
     dp.include_router(router)
+
+    # Global safety net: any unhandled exception inside a callback handler
+    # would otherwise leave the Telegram spinner stuck because
+    # `callback.answer()` never fires. Catch here, dismiss the spinner,
+    # and let the logger record the real stack trace.
+    @dp.errors()
+    async def _on_handler_error(event: ErrorEvent) -> bool:
+        logger.exception("handler error", exc_info=event.exception)
+        update = event.update
+        if update is not None and update.callback_query is not None:
+            with contextlib.suppress(Exception):
+                await update.callback_query.answer(
+                    "Что-то пошло не так. Попробуй ещё раз или напиши /start.",
+                    show_alert=False,
+                )
+        return True
 
     try:
         recovered = await recover_stale_queries(bot)

@@ -1126,15 +1126,14 @@ async def confirm_search(
         await session.commit()
     except IntegrityError:
         # Partial unique index (uq_user_active_search) says this user
-        # already has an in-flight search. Roll back the quota bump we
-        # just made and let them know.
+        # already has an in-flight search. The transaction is rolled back
+        # as a whole — including the quota bump we just made — so no
+        # manual "refund" is needed (doing one here would actually drop
+        # the counter below its true value).
         await session.rollback()
-        await session.execute(
-            update(User)
-            .where(User.id == user.id)
-            .values(queries_used=User.queries_used - 1)
-        )
-        await session.commit()
+        # Reload the in-memory counter so the sibling /balance command
+        # doesn't show a stale value until the next middleware cycle.
+        user.queries_used -= 1
         await state.clear()
         await message.answer(
             "⌛️ У тебя уже идёт поиск — дождись его окончания, "
