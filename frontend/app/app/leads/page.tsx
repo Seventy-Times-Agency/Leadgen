@@ -12,6 +12,7 @@ import {
   getAllLeads,
   tempOf,
 } from "@/lib/api";
+import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 type View = "list" | "kanban" | "grid";
 type Filter = "all" | LeadStatus;
@@ -25,6 +26,7 @@ const STATUS_ORDER: LeadStatus[] = [
 ];
 
 export default function LeadsCRMPage() {
+  const { t } = useLocale();
   const [data, setData] = useState<LeadListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>("list");
@@ -41,7 +43,10 @@ export default function LeadsCRMPage() {
   const leads = data?.leads ?? [];
 
   const filtered = useMemo(
-    () => (filter === "all" ? leads : leads.filter((l) => l.lead_status === filter)),
+    () =>
+      filter === "all"
+        ? leads
+        : leads.filter((l) => l.lead_status === filter),
     [filter, leads],
   );
 
@@ -57,6 +62,19 @@ export default function LeadsCRMPage() {
     return counts;
   }, [leads]);
 
+  const relative = (ts: string): string => {
+    const then = new Date(ts).getTime();
+    if (Number.isNaN(then)) return t("common.none");
+    const diff = Date.now() - then;
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return t("crm.relative.now");
+    if (m < 60) return t("crm.relative.m", { n: m });
+    const h = Math.floor(m / 60);
+    if (h < 24) return t("crm.relative.h", { n: h });
+    const d = Math.floor(h / 24);
+    return t("crm.relative.d", { n: d });
+  };
+
   const updateLocalLead = (updated: Lead) => {
     setData((d) =>
       d
@@ -71,13 +89,14 @@ export default function LeadsCRMPage() {
   return (
     <>
       <Topbar
-        title="All leads"
-        subtitle={`${leads.length} leads across ${
-          Object.keys(sessions).length
-        } sessions`}
+        title={t("crm.title")}
+        subtitle={t("crm.subtitle", {
+          leads: leads.length,
+          sessions: Object.keys(sessions).length,
+        })}
         right={
           <button className="btn btn-ghost btn-sm" type="button" disabled>
-            <Icon name="download" size={14} /> Export
+            <Icon name="download" size={14} /> {t("common.export")}
           </button>
         }
       />
@@ -111,7 +130,7 @@ export default function LeadsCRMPage() {
               className={filter === "all" ? "active" : ""}
               onClick={() => setFilter("all")}
             >
-              all · {leads.length}
+              {t("crm.status.all")} · {leads.length}
             </button>
             {STATUS_ORDER.map((s) => (
               <button
@@ -120,7 +139,7 @@ export default function LeadsCRMPage() {
                 className={filter === s ? "active" : ""}
                 onClick={() => setFilter(s)}
               >
-                {s} · {statusCounts[s]}
+                {t(`crm.status.${s}` as TranslationKey)} · {statusCounts[s]}
               </button>
             ))}
           </div>
@@ -158,7 +177,7 @@ export default function LeadsCRMPage() {
               color: "var(--text-muted)",
             }}
           >
-            No leads yet. Run your first search from the sidebar.
+            {t("crm.empty")}
           </div>
         )}
 
@@ -168,11 +187,11 @@ export default function LeadsCRMPage() {
               <thead>
                 <tr>
                   <th />
-                  <th>Lead</th>
-                  <th>Session</th>
-                  <th>Score</th>
-                  <th>Status</th>
-                  <th>Last touched</th>
+                  <th>{t("crm.table.lead")}</th>
+                  <th>{t("crm.table.session")}</th>
+                  <th>{t("crm.table.score")}</th>
+                  <th>{t("crm.table.status")}</th>
+                  <th>{t("crm.table.touched")}</th>
                   <th />
                 </tr>
               </thead>
@@ -206,7 +225,9 @@ export default function LeadsCRMPage() {
                             {session.niche} · {session.region}
                           </span>
                         ) : (
-                          <span style={{ color: "var(--text-dim)" }}>—</span>
+                          <span style={{ color: "var(--text-dim)" }}>
+                            {t("common.none")}
+                          </span>
                         )}
                       </td>
                       <td>
@@ -227,11 +248,15 @@ export default function LeadsCRMPage() {
                       </td>
                       <td>
                         <span className="chip" style={{ fontSize: 11 }}>
-                          {l.lead_status}
+                          {t(
+                            `lead.statusLabel.${l.lead_status}` as TranslationKey,
+                          )}
                         </span>
                       </td>
                       <td style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                        {l.last_touched_at ? relative(l.last_touched_at) : "—"}
+                        {l.last_touched_at
+                          ? relative(l.last_touched_at)
+                          : t("common.none")}
                       </td>
                       <td>
                         <Icon
@@ -281,10 +306,9 @@ export default function LeadsCRMPage() {
                       style={{
                         fontSize: 12,
                         fontWeight: 600,
-                        textTransform: "capitalize",
                       }}
                     >
-                      {col}
+                      {t(`lead.statusLabel.${col}` as TranslationKey)}
                     </div>
                     <div
                       className="chip"
@@ -363,17 +387,4 @@ export default function LeadsCRMPage() {
       )}
     </>
   );
-}
-
-function relative(ts: string): string {
-  const then = new Date(ts).getTime();
-  if (Number.isNaN(then)) return "—";
-  const diff = Date.now() - then;
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  return `${d}d ago`;
 }

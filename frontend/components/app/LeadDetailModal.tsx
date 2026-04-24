@@ -8,6 +8,7 @@ import {
   tempOf,
   updateLead,
 } from "@/lib/api";
+import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 const STATUSES: LeadStatus[] = ["new", "contacted", "replied", "won", "archived"];
 
@@ -20,6 +21,7 @@ export function LeadDetailModal({
   onClose: () => void;
   onUpdated?: (updated: Lead) => void;
 }) {
+  const { t } = useLocale();
   const [status, setStatus] = useState<LeadStatus>(lead.lead_status);
   const [note, setNote] = useState(lead.notes ?? "");
   const [saving, setSaving] = useState(false);
@@ -92,7 +94,7 @@ export function LeadDetailModal({
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
               <div className={"chip chip-" + temp}>
                 <span className={"status-dot " + temp} />
-                {temp} lead
+                {temp}
               </div>
               {lead.category && (
                 <span className="chip">{lead.category}</span>
@@ -161,7 +163,7 @@ export function LeadDetailModal({
                     size={11}
                     style={{ marginRight: 4, verticalAlign: "-2px" }}
                   />
-                  How to pitch this lead
+                  {t("lead.howToPitch")}
                 </div>
                 <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text)" }}>
                   {lead.advice}
@@ -180,7 +182,7 @@ export function LeadDetailModal({
               >
                 <div>
                   <div className="eyebrow" style={{ marginBottom: 8, color: "var(--hot)" }}>
-                    Strengths
+                    {t("lead.strengths")}
                   </div>
                   <ul
                     style={{
@@ -198,7 +200,7 @@ export function LeadDetailModal({
                 </div>
                 <div>
                   <div className="eyebrow" style={{ marginBottom: 8, color: "#B45309" }}>
-                    Weaknesses
+                    {t("lead.weaknesses")}
                   </div>
                   <ul
                     style={{
@@ -228,7 +230,7 @@ export function LeadDetailModal({
                 }}
               >
                 <div className="eyebrow" style={{ color: "var(--cold)", marginBottom: 6 }}>
-                  Red flags
+                  {t("lead.redFlags")}
                 </div>
                 <ul
                   style={{
@@ -246,12 +248,12 @@ export function LeadDetailModal({
             )}
 
             <div>
-              <div className="eyebrow" style={{ marginBottom: 8 }}>Notes</div>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>{t("lead.notes")}</div>
               <textarea
                 className="textarea"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Add your notes about this lead…"
+                placeholder={t("lead.notesPh")}
                 rows={3}
               />
             </div>
@@ -259,7 +261,7 @@ export function LeadDetailModal({
 
           <div>
             <div className="card" style={{ padding: 18, marginBottom: 14 }}>
-              <div className="eyebrow" style={{ marginBottom: 10 }}>Status</div>
+              <div className="eyebrow" style={{ marginBottom: 10 }}>{t("lead.status")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {STATUSES.map((s) => (
                   <div
@@ -286,14 +288,14 @@ export function LeadDetailModal({
                         background: status === s ? "var(--accent)" : "var(--border-strong)",
                       }}
                     />
-                    {s}
+                    {t(`lead.statusLabel.${s}` as TranslationKey)}
                   </div>
                 ))}
               </div>
             </div>
 
             <div className="card" style={{ padding: 18 }}>
-              <div className="eyebrow" style={{ marginBottom: 10 }}>Contact</div>
+              <div className="eyebrow" style={{ marginBottom: 10 }}>{t("lead.contact")}</div>
               <div
                 style={{
                   display: "flex",
@@ -364,7 +366,7 @@ export function LeadDetailModal({
                     }}
                   >
                     <Icon name="star" size={14} style={{ color: "var(--warm)" }} />
-                    <b>{lead.rating}</b> · {lead.reviews_count ?? 0} reviews
+                    <b>{lead.rating}</b> · {lead.reviews_count ?? 0} {t("lead.rating")}
                   </div>
                 )}
               </div>
@@ -390,7 +392,7 @@ export function LeadDetailModal({
                 onClick={save}
                 type="button"
               >
-                {saving ? "Saving…" : "Save changes"}
+                {saving ? t("common.saving") : t("common.save")}
               </button>
             </div>
           </div>
