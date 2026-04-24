@@ -1,10 +1,23 @@
 import type { Metadata } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Leadgen — B2B clients in a minute",
+  title: "Leadgen — AI-scored B2B prospects in 90 seconds",
   description:
-    "AI-driven B2B lead generation for agencies. Pick a niche and a city, get a qualified base with outreach-ready advice.",
+    "Describe your target niche and region. Leadgen pulls matches from Google Places, enriches every site and review, and hands you an AI-scored list with a custom pitch per lead.",
 };
 
 export default function RootLayout({
@@ -13,8 +26,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen">{children}</body>
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+      <body>{children}</body>
     </html>
   );
 }

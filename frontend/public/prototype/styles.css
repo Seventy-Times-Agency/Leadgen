@@ -1,14 +1,7 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Leadgen Web — design system variables and primitives.
-   Ported from frontend/public/prototype/styles.css so Next.js pages can use
-   the same component classes (.btn, .card, .chip, .eyebrow, .status-dot, …). */
+/* Leadgen Web — main stylesheet */
 
 :root {
-  color-scheme: light;
-
+  /* Base palette — from DESIGN_BRIEF */
   --bg: #FAFAF7;
   --surface: #FFFFFF;
   --surface-2: #F5F4EF;
@@ -19,20 +12,24 @@
   --text-muted: #6B6B70;
   --text-dim: #9A9A9F;
 
+  /* Accent — default electric indigo */
   --accent: #3D5AFE;
   --accent-hover: #2C3FBE;
   --accent-soft: rgba(61, 90, 254, 0.08);
   --accent-fg: #FFFFFF;
 
+  /* Semantics */
   --hot: #16A34A;
   --warm: #F59E0B;
   --cold: #DC2626;
   --info: var(--accent);
 
-  --font-sans: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
-  --font-display: var(--font-inter), "Inter", system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
+  /* Type */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
+  /* Density scale */
   --space: 1;
   --pad-card: calc(20px * var(--space));
   --pad-row: calc(14px * var(--space));
@@ -53,8 +50,9 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-html,
-body {
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
@@ -63,7 +61,8 @@ body {
   text-rendering: optimizeLegibility;
   min-height: 100vh;
 }
-
+body.app { overflow: hidden; }
+button { font-family: inherit; }
 a { color: inherit; text-decoration: none; }
 input, textarea, select { font-family: inherit; color: inherit; }
 
@@ -76,7 +75,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   color: var(--text-dim);
 }
 
-/* Mesh gradient backdrop for hero + empty states */
+/* Mesh gradient — for hero + empty states */
 .mesh-bg {
   position: absolute; inset: 0; pointer-events: none; overflow: hidden;
   mask-image: radial-gradient(ellipse at center, black 50%, transparent 85%);
@@ -156,7 +155,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   transform: translateY(-2px);
 }
 
-/* Inputs */
+/* Input */
 .input, .select, .textarea {
   width: 100%;
   padding: calc(11px * var(--space)) 14px;
@@ -191,6 +190,59 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .chip-cold { background: color-mix(in srgb, var(--cold) 8%, transparent); color: var(--cold); border-color: color-mix(in srgb, var(--cold) 20%, transparent); }
 .chip-accent { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
 
+/* Sidebar layout */
+.app-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  height: 100vh;
+}
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  padding: 20px 14px;
+  overflow-y: auto;
+}
+.main-area {
+  overflow-y: auto;
+  background: var(--bg);
+}
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 32px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px;
+}
+.page { padding: 28px 32px 60px; max-width: 1280px; margin: 0 auto; }
+
+/* Sidebar items */
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 13.5px; font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.nav-item:hover { background: var(--surface-2); color: var(--text); }
+.nav-item.active {
+  background: var(--accent-soft); color: var(--accent);
+}
+.nav-item .icon { width: 18px; height: 18px; flex-shrink: 0; }
+.nav-section {
+  font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 18px 12px 6px;
+}
+
+/* Focus ring keyboard only */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* Status dots */
 .status-dot {
   width: 8px; height: 8px; border-radius: 50%;
@@ -209,7 +261,12 @@ input, textarea, select { font-family: inherit; color: inherit; }
   50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--hot) 0%, transparent); }
 }
 
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Scrollbar */
+.main-area::-webkit-scrollbar, .sidebar::-webkit-scrollbar { width: 8px; height: 8px; }
+.main-area::-webkit-scrollbar-thumb, .sidebar::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 8px;
+}
 
 /* Animations */
 @keyframes fadeUp {
@@ -218,7 +275,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .fade-up { animation: fadeUp 0.45s var(--ease-out) both; }
 
-/* Score bar (used on lead cards) */
+/* Score bar */
 .score-track {
   height: 6px; width: 100%;
   background: var(--surface-3);
@@ -235,7 +292,32 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .score-fill.warm { background: linear-gradient(90deg, var(--warm), #f97316); }
 .score-fill.cold { background: linear-gradient(90deg, #d1d5db, var(--cold)); }
 
-/* Segmented control */
+/* Table */
+.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tbl th {
+  text-align: left;
+  font-weight: 600; font-size: 11px;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky; top: 0;
+}
+.tbl td {
+  padding: var(--pad-row) 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.tbl tr { transition: background 0.1s; }
+.tbl tbody tr:hover { background: var(--surface-2); }
+
+/* Density variants */
+body.density-compact { --space: 0.85; }
+body.density-comfortable { --space: 1; }
+body.density-spacious { --space: 1.18; }
+
+/* Segmented */
 .seg {
   display: inline-flex;
   padding: 3px;
@@ -253,7 +335,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .seg button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
 .seg button:hover:not(.active) { color: var(--text); }
 
-/* Keycap */
+/* Kbd */
 .kbd {
   display: inline-block;
   padding: 2px 6px;
@@ -276,7 +358,20 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .hud-corner.bl { bottom: 10px; left: 10px; border-right: none; border-top: none; }
 .hud-corner.br { bottom: 10px; right: 10px; border-left: none; border-top: none; }
 
-/* Avatars */
+/* Progress pulse */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer-line {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  animation: shimmer 1.8s linear infinite;
+}
+
+/* Avatar */
 .avatar {
   width: 32px; height: 32px;
   border-radius: 50%;
@@ -287,3 +382,10 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .avatar-sm { width: 24px; height: 24px; font-size: 10px; }
 .avatar-lg { width: 44px; height: 44px; font-size: 15px; }
+
+/* Dot pattern bg */
+.dot-pattern {
+  background-image: radial-gradient(circle, var(--border-strong) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
