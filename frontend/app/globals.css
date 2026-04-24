@@ -3,11 +3,394 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  --bg: #fafaf7;
+  --surface: #ffffff;
+  --surface-2: #f5f4ef;
+  --surface-3: #efede6;
+  --border: #eaeae6;
+  --border-strong: #d8d6ce;
+  --text: #0e0e10;
+  --text-muted: #6b6b70;
+  --text-dim: #9a9a9f;
+
+  --accent: #3d5afe;
+  --accent-hover: #2c3fbe;
+  --accent-soft: rgba(61, 90, 254, 0.08);
+  --accent-fg: #ffffff;
+
+  --hot: #16a34a;
+  --warm: #f59e0b;
+  --cold: #dc2626;
+
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 2px rgba(15, 15, 20, 0.04);
+  --shadow-md: 0 4px 16px -4px rgba(15, 15, 20, 0.08), 0 2px 6px rgba(15, 15, 20, 0.04);
+  --shadow-lg: 0 20px 60px -20px rgba(15, 15, 20, 0.18), 0 8px 24px -8px rgba(15, 15, 20, 0.08);
+
+  --ease: cubic-bezier(0.21, 0.47, 0.32, 0.98);
+  color-scheme: light;
 }
 
+* {
+  box-sizing: border-box;
+}
+
+html,
 body {
-  @apply bg-neutral-950 text-neutral-100;
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", system-ui, sans-serif;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11", "tnum";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+input,
+textarea,
+select,
+button {
+  font-family: inherit;
+  color: inherit;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum";
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s var(--ease);
+  white-space: nowrap;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.btn:hover {
+  background: var(--accent-hover);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.btn-ghost:hover {
+  background: var(--surface-2);
+  border-color: var(--text-muted);
+}
+.btn-soft {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: none;
+}
+.btn-soft:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.btn-lg {
+  padding: 14px 24px;
+  font-size: 15px;
+}
+
+/* Cards */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  transition:
+    border-color 0.15s var(--ease),
+    box-shadow 0.15s var(--ease),
+    transform 0.15s var(--ease);
+}
+.card-hover:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* Inputs */
+.input,
+.select,
+.textarea {
+  width: 100%;
+  padding: 11px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.input:focus,
+.select:focus,
+.textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.input::placeholder {
+  color: var(--text-dim);
+}
+.textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* Chips */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.chip-hot {
+  background: color-mix(in srgb, var(--hot) 10%, transparent);
+  color: var(--hot);
+  border-color: color-mix(in srgb, var(--hot) 25%, transparent);
+}
+.chip-warm {
+  background: color-mix(in srgb, var(--warm) 12%, transparent);
+  color: #b45309;
+  border-color: color-mix(in srgb, var(--warm) 30%, transparent);
+}
+.chip-cold {
+  background: color-mix(in srgb, var(--cold) 8%, transparent);
+  color: var(--cold);
+  border-color: color-mix(in srgb, var(--cold) 20%, transparent);
+}
+.chip-accent {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* Mesh blob backdrop */
+.mesh-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  mask-image: radial-gradient(ellipse at center, black 50%, transparent 85%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 50%, transparent 85%);
+}
+.mesh-bg::before,
+.mesh-bg::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.55;
+  animation: meshFloat 14s ease-in-out infinite;
+}
+.mesh-bg::before {
+  width: 520px;
+  height: 520px;
+  left: 10%;
+  top: -120px;
+  background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+}
+.mesh-bg::after {
+  width: 480px;
+  height: 480px;
+  right: 5%;
+  top: 20%;
+  background: radial-gradient(circle, #ff4d8f 0%, transparent 70%);
+  animation-delay: -5s;
+  opacity: 0.35;
+}
+@keyframes meshFloat {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(30px, -20px) scale(1.05);
+  }
+  66% {
+    transform: translate(-20px, 30px) scale(0.95);
+  }
+}
+
+/* Sidebar app shell */
+.app-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+.sidebar {
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  padding: 24px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.sidebar nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: background 0.12s var(--ease);
+  cursor: pointer;
+}
+.sidebar nav a:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.sidebar nav a[data-active="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+.sidebar-logo-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), #6a7bff);
+  display: grid;
+  place-items: center;
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+}
+.app-main {
+  padding: 32px 40px 64px;
+  max-width: 1200px;
+  width: 100%;
+}
+
+/* Progress bar */
+.progress-track {
+  width: 100%;
+  height: 6px;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #6a7bff);
+  border-radius: var(--radius-pill);
+  transition: width 0.5s var(--ease);
+}
+
+/* Skeleton */
+.skeleton {
+  display: inline-block;
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 0%,
+    var(--surface-3) 50%,
+    var(--surface-2) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Status pills */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.status-pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.status-running {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.status-done {
+  background: color-mix(in srgb, var(--hot) 10%, transparent);
+  color: var(--hot);
+}
+.status-failed {
+  background: color-mix(in srgb, var(--cold) 10%, transparent);
+  color: var(--cold);
+}
+.status-pending {
+  background: var(--surface-2);
+  color: var(--text-muted);
 }

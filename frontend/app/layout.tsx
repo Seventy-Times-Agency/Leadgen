@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Leadgen — B2B clients in a minute",
+  title: "Leadgen — B2B prospects in under two minutes",
   description:
-    "AI-driven B2B lead generation for agencies. Pick a niche and a city, get a qualified base with outreach-ready advice.",
+    "Describe a niche and a region — Leadgen pulls matching companies, reads their websites and reviews, and hands back AI-scored prospects with outreach advice.",
 };
 
 export default function RootLayout({
@@ -14,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen">{children}</body>
+      <body>{children}</body>
     </html>
   );
 }

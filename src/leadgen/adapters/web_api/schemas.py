@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -27,6 +28,18 @@ class SearchCreate(BaseModel):
         default=None,
         description="BCP-47 language hint for Google Places (e.g. 'en', 'uk').",
     )
+    display_name: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Optional display name persisted on the user row when we "
+        "auto-create them on first search.",
+    )
+    profession: str | None = Field(
+        default=None,
+        max_length=200,
+        description="What the requesting agency sells. Feeds the AI scoring "
+        "prompt so 'good lead for X' matches the user's actual offer.",
+    )
 
 
 class SearchSummary(BaseModel):
@@ -41,6 +54,7 @@ class SearchSummary(BaseModel):
     avg_score: float | None
     hot_leads_count: int | None
     error: str | None
+    insights: str | None = None
 
 
 class SearchCreateResponse(BaseModel):
@@ -48,6 +62,39 @@ class SearchCreateResponse(BaseModel):
     queued: bool = Field(
         ...,
         description="True if the job went onto the arq queue; False means the "
-        "row was created but execution must be triggered by a worker that "
-        "picks it up (e.g. Telegram bot on Railway).",
+        "search is running in-process via asyncio.create_task on the same "
+        "container that serves the API.",
     )
+    running: bool = Field(
+        default=True,
+        description="True when the pipeline has been started (queued or in-"
+        "process). Always True on success — kept for symmetry with `queued`.",
+    )
+
+
+class LeadOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    website: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    category: str | None = None
+    rating: float | None = None
+    reviews_count: int | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    enriched: bool = False
+    score_ai: float | None = None
+    tags: list[str] | None = None
+    summary: str | None = None
+    advice: str | None = None
+    strengths: list[str] | None = None
+    weaknesses: list[str] | None = None
+    red_flags: list[str] | None = None
+    social_links: dict[str, str] | None = None
+    reviews_summary: str | None = None
+
+
+class SearchDetail(SearchSummary):
+    stats: dict[str, Any] | None = None
+    leads: list[LeadOut] = Field(default_factory=list)
