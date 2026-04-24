@@ -5,12 +5,12 @@ import { AuthShell } from "@/components/AuthShell";
 import { Icon } from "@/components/Icon";
 import { useLocale } from "@/lib/i18n";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const { t } = useLocale();
   return (
-    <AuthShell title={t("auth.login.title")}>
+    <AuthShell title={t("auth.register.title")}>
       <div style={{ color: "var(--text-muted)", marginBottom: 28, fontSize: 15 }}>
-        {t("auth.login.subtitle")}
+        {t("auth.register.subtitle")}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <Link
@@ -18,7 +18,7 @@ export default function LoginPage() {
           className="btn btn-lg"
           style={{ justifyContent: "center" }}
         >
-          {t("auth.login.enter")} <Icon name="arrow" size={15} />
+          {t("auth.register.enter")} <Icon name="arrow" size={15} />
         </Link>
         <Link
           href="/"

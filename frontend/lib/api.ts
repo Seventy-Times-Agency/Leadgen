@@ -1,19 +1,20 @@
 /**
- * Thin client around the FastAPI backend on Railway.
- *
- * Auth model (internal-use stage):
- *
- *   No API key, no password. User types their name, we hash it to a
- *   stable positive integer, store `{displayName, userId}` in local
- *   storage. The backend runs in "open mode" unless WEB_API_KEY is
- *   set in Railway — then this module auto-forwards the saved key.
- *
- * Real per-user auth (magic link + server session) lands when public
- * sign-up opens. Until then the backend trusts the caller to pick a
- * user id the way the bot trusts Telegram to supply one.
+ * Thin client for the Leadgen Railway API. Types mirror
+ * src/leadgen/adapters/web_api/schemas.py — keep them in sync by
+ * convention; once auth lands we should generate these from the
+ * FastAPI OpenAPI schema.
  */
 
+const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+const API_BASE = RAW_BASE.replace(/\/$/, "");
+
+export const WEB_DEMO_USER_ID = 0;
+
+// ── Types ───────────────────────────────────────────────────────────
+
 export type SearchStatus = "pending" | "running" | "done" | "failed";
+export type LeadTemp = "hot" | "warm" | "cold";
+export type LeadStatus = "new" | "contacted" | "replied" | "won" | "archived";
 
 export interface SearchSummary {
   id: string;
@@ -21,27 +22,39 @@ export interface SearchSummary {
   niche: string;
   region: string;
   status: SearchStatus;
+  source: string;
   created_at: string;
   finished_at: string | null;
   leads_count: number;
   avg_score: number | null;
   hot_leads_count: number | null;
   error: string | null;
-  insights?: string | null;
+  insights: string | null;
 }
 
-export interface LeadOut {
+export interface SearchCreate {
+  niche: string;
+  region: string;
+  user_id?: number;
+  language_code?: string;
+  profession?: string;
+}
+
+export interface SearchCreateResponse {
   id: string;
+  queued: boolean;
+}
+
+export interface Lead {
+  id: string;
+  query_id: string;
   name: string;
-  website: string | null;
-  phone: string | null;
-  address: string | null;
   category: string | null;
+  address: string | null;
+  phone: string | null;
+  website: string | null;
   rating: number | null;
   reviews_count: number | null;
-  latitude: number | null;
-  longitude: number | null;
-  enriched: boolean;
   score_ai: number | null;
   tags: string[] | null;
   summary: string | null;
@@ -50,282 +63,157 @@ export interface LeadOut {
   weaknesses: string[] | null;
   red_flags: string[] | null;
   social_links: Record<string, string> | null;
-  reviews_summary: string | null;
+  lead_status: LeadStatus;
+  owner_user_id: number | null;
+  notes: string | null;
+  last_touched_at: string | null;
+  created_at: string;
 }
 
-export interface SearchDetail extends SearchSummary {
-  stats: Record<string, number> | null;
-  leads: LeadOut[];
+export interface LeadListResponse {
+  leads: Lead[];
+  total: number;
+  sessions_by_id: Record<string, { niche: string; region: string }>;
 }
 
-export interface SearchCreatePayload {
-  user_id: number;
-  niche: string;
-  region: string;
-  language_code?: string | null;
-  display_name?: string | null;
-  profession?: string | null;
+export interface LeadUpdate {
+  lead_status?: LeadStatus;
+  owner_user_id?: number | null;
+  notes?: string | null;
 }
 
-export interface SearchCreateResponse {
-  id: string;
-  queued: boolean;
-  running: boolean;
+export interface DashboardStats {
+  sessions_total: number;
+  sessions_running: number;
+  leads_total: number;
+  hot_total: number;
+  warm_total: number;
+  cold_total: number;
 }
 
-export interface ApiError {
-  status: number;
-  detail: string;
+export interface TeamMember {
+  id: number;
+  name: string;
+  role: string;
+  initials: string;
+  color: string;
+  email: string | null;
+  last_active: string | null;
 }
 
-const STORAGE_KEY_USER = "leadgen.userId";
-const STORAGE_KEY_NAME = "leadgen.displayName";
-const STORAGE_KEY_PROF = "leadgen.profession";
-// Optional: carried forward only if the site operator chose to set
-// WEB_API_KEY on the backend. A blank key means open mode.
-const STORAGE_KEY_API = "leadgen.apiKey";
+// ── Fetch core ──────────────────────────────────────────────────────
 
-// Hardcoded fallback so Vercel *preview* builds (which may not inherit
-// production env vars) still reach the backend. Production deploys
-// should still set NEXT_PUBLIC_API_URL explicitly — the fallback is a
-// safety net, not the source of truth.
-const DEFAULT_API_BASE = "https://leadgen-production-6758.up.railway.app";
-
-export function getApiBase(): string {
-  const url = process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE;
-  return url.replace(/\/$/, "");
-}
-
-export interface AuthCreds {
-  userId: number;
-  displayName: string;
-  profession?: string;
-  apiKey?: string;
-}
-
-export function readAuth(): AuthCreds | null {
-  if (typeof window === "undefined") return null;
-  const userIdRaw = window.localStorage.getItem(STORAGE_KEY_USER);
-  const name = window.localStorage.getItem(STORAGE_KEY_NAME);
-  if (!userIdRaw || !name) return null;
-  const userId = Number.parseInt(userIdRaw, 10);
-  if (!Number.isFinite(userId)) return null;
-  return {
-    userId,
-    displayName: name,
-    profession: window.localStorage.getItem(STORAGE_KEY_PROF) ?? undefined,
-    apiKey: window.localStorage.getItem(STORAGE_KEY_API) ?? undefined,
-  };
-}
-
-export function writeAuth(creds: AuthCreds): void {
-  window.localStorage.setItem(STORAGE_KEY_USER, String(creds.userId));
-  window.localStorage.setItem(STORAGE_KEY_NAME, creds.displayName);
-  if (creds.profession) {
-    window.localStorage.setItem(STORAGE_KEY_PROF, creds.profession);
-  } else {
-    window.localStorage.removeItem(STORAGE_KEY_PROF);
-  }
-  if (creds.apiKey) {
-    window.localStorage.setItem(STORAGE_KEY_API, creds.apiKey);
-  } else {
-    window.localStorage.removeItem(STORAGE_KEY_API);
+class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public body: unknown,
+  ) {
+    super(message);
+    this.name = "ApiError";
   }
 }
 
-export function clearAuth(): void {
-  window.localStorage.removeItem(STORAGE_KEY_USER);
-  window.localStorage.removeItem(STORAGE_KEY_NAME);
-  window.localStorage.removeItem(STORAGE_KEY_PROF);
-  window.localStorage.removeItem(STORAGE_KEY_API);
-}
-
-/**
- * Stable positive 31-bit integer derived from a string. Used to turn a
- * display name into a user id that survives reloads and sign-outs so
- * the same person keeps their search history between sessions without
- * anyone having to type a number.
- */
-export function nameToUserId(name: string): number {
-  const s = name.trim().toLowerCase();
-  // FNV-1a 32-bit hash, folded into the positive half so SQL BIGINT is
-  // happy and no leading minus sign sneaks into any UI.
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  if (!API_BASE) {
+    throw new ApiError(
+      "NEXT_PUBLIC_API_URL is not set; frontend cannot reach the Leadgen backend.",
+      0,
+      null,
+    );
   }
-  return h & 0x7fffffff;
-}
-
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const creds = readAuth();
-  const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json");
-  if (creds?.apiKey) {
-    headers.set("X-API-Key", creds.apiKey);
-  }
-  const url = `${getApiBase()}${path}`;
-  let res: Response;
-  try {
-    res = await fetch(url, { ...init, headers });
-  } catch (e) {
-    // Network / CORS / DNS failure — fetch throws TypeError. Normalize
-    // so UI can show something actionable instead of "Failed to fetch".
-    const message = e instanceof Error ? e.message : String(e);
-    const err: ApiError = {
-      status: 0,
-      detail: `Could not reach ${url} — ${message}`,
-    };
-    throw err;
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init.headers ?? {}),
+    },
+    cache: "no-store",
+  });
+  let body: unknown = null;
+  const text = await res.text();
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
   }
   if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try {
-      const body = await res.json();
-      detail = body.detail ?? detail;
-    } catch {
-      // ignore
-    }
-    const err: ApiError = { status: res.status, detail };
-    throw err;
+    const detail =
+      (body && typeof body === "object" && "detail" in body && typeof body.detail === "string"
+        ? body.detail
+        : null) ?? `${res.status} ${res.statusText}`;
+    throw new ApiError(detail, res.status, body);
   }
-  if (res.status === 204) return undefined as T;
-  const ct = res.headers.get("content-type") ?? "";
-  if (!ct.includes("application/json")) {
-    return (await res.text()) as unknown as T;
-  }
-  return (await res.json()) as T;
+  return body as T;
 }
 
-export async function pingHealth(): Promise<{
-  status: string;
-  db: boolean;
-  commit: string;
-}> {
-  const res = await fetch(`${getApiBase()}/health`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`health ${res.status}`);
-  return res.json();
-}
+// ── Endpoints ───────────────────────────────────────────────────────
 
-export async function listSearches(
-  creds: AuthCreds,
-  limit = 20
-): Promise<SearchSummary[]> {
-  const params = new URLSearchParams({
-    user_id: String(creds.userId),
-    limit: String(limit),
-  });
-  return request<SearchSummary[]>(`/api/v1/searches?${params}`);
-}
-
-export async function createSearch(
-  creds: AuthCreds,
-  payload: Omit<SearchCreatePayload, "user_id">
-): Promise<SearchCreateResponse> {
-  const body: SearchCreatePayload = {
-    user_id: creds.userId,
-    display_name: creds.displayName,
-    profession: creds.profession ?? null,
-    ...payload,
-  };
+export async function createSearch(body: SearchCreate): Promise<SearchCreateResponse> {
   return request<SearchCreateResponse>("/api/v1/searches", {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({ user_id: WEB_DEMO_USER_ID, ...body }),
   });
 }
 
-export async function getSearch(
-  _creds: AuthCreds,
-  id: string
-): Promise<SearchDetail> {
-  return request<SearchDetail>(`/api/v1/searches/${id}`);
+export async function getSearches(userId: number = WEB_DEMO_USER_ID): Promise<SearchSummary[]> {
+  return request<SearchSummary[]>(`/api/v1/searches?user_id=${userId}&limit=50`);
+}
+
+export async function getSearch(id: string): Promise<SearchSummary> {
+  return request<SearchSummary>(`/api/v1/searches/${id}`);
 }
 
 export async function getSearchLeads(
-  _creds: AuthCreds,
-  id: string
-): Promise<LeadOut[]> {
-  return request<LeadOut[]>(`/api/v1/searches/${id}/leads`);
-}
-
-export async function downloadExcel(
-  creds: AuthCreds,
   id: string,
-  filename: string
-): Promise<void> {
-  const headers: Record<string, string> = {};
-  if (creds.apiKey) headers["X-API-Key"] = creds.apiKey;
-  const res = await fetch(`${getApiBase()}/api/v1/searches/${id}/excel`, {
-    headers,
-  });
-  if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try {
-      const body = await res.json();
-      detail = body.detail ?? detail;
-    } catch {
-      // ignore
-    }
-    throw { status: res.status, detail } as ApiError;
-  }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  temp?: LeadTemp,
+): Promise<Lead[]> {
+  const q = temp ? `?temp=${temp}` : "";
+  return request<Lead[]>(`/api/v1/searches/${id}/leads${q}`);
 }
 
-export interface ProgressEvent {
-  kind: "phase" | "update" | "finish" | "done";
-  title?: string;
-  subtitle?: string;
-  done?: number;
-  total?: number;
-  text?: string;
-}
-
-export function progressUrl(creds: AuthCreds, id: string): string {
+export async function getAllLeads(
+  opts: { userId?: number; leadStatus?: LeadStatus; limit?: number } = {},
+): Promise<LeadListResponse> {
   const params = new URLSearchParams();
-  if (creds.apiKey) params.set("api_key", creds.apiKey);
-  const qs = params.toString();
-  return `${getApiBase()}/api/v1/searches/${id}/progress${qs ? `?${qs}` : ""}`;
+  params.set("user_id", String(opts.userId ?? WEB_DEMO_USER_ID));
+  if (opts.leadStatus) params.set("lead_status", opts.leadStatus);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  return request<LeadListResponse>(`/api/v1/leads?${params.toString()}`);
 }
 
-export function subscribeProgress(
-  creds: AuthCreds,
-  id: string,
-  handlers: {
-    onPhase?: (title: string, subtitle: string) => void;
-    onUpdate?: (done: number, total: number) => void;
-    onFinish?: (text: string) => void;
-    onDone?: () => void;
-    onError?: (err: Event) => void;
-  }
-): () => void {
-  const src = new EventSource(progressUrl(creds, id));
-  src.addEventListener("phase", (e) => {
-    const data = JSON.parse((e as MessageEvent).data);
-    handlers.onPhase?.(data.title ?? "", data.subtitle ?? "");
+export async function updateLead(id: string, patch: LeadUpdate): Promise<Lead> {
+  return request<Lead>(`/api/v1/leads/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
   });
-  src.addEventListener("update", (e) => {
-    const data = JSON.parse((e as MessageEvent).data);
-    handlers.onUpdate?.(data.done ?? 0, data.total ?? 0);
-  });
-  src.addEventListener("finish", (e) => {
-    const data = JSON.parse((e as MessageEvent).data);
-    handlers.onFinish?.(data.text ?? "");
-  });
-  src.addEventListener("done", () => {
-    handlers.onDone?.();
-    src.close();
-  });
-  src.onerror = (e) => {
-    handlers.onError?.(e);
-  };
-  return () => src.close();
 }
+
+export async function getStats(userId: number = WEB_DEMO_USER_ID): Promise<DashboardStats> {
+  return request<DashboardStats>(`/api/v1/stats?user_id=${userId}`);
+}
+
+export async function getTeam(): Promise<TeamMember[]> {
+  return request<TeamMember[]>("/api/v1/team");
+}
+
+// ── Utilities ───────────────────────────────────────────────────────
+
+export function progressStreamUrl(searchId: string): string | null {
+  if (!API_BASE) return null;
+  return `${API_BASE}/api/v1/searches/${searchId}/progress`;
+}
+
+export function tempOf(score: number | null): LeadTemp {
+  if (score === null || score === undefined) return "cold";
+  if (score >= 75) return "hot";
+  if (score >= 50) return "warm";
+  return "cold";
+}
+
+export { ApiError };

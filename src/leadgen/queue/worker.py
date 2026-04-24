@@ -1,10 +1,10 @@
 """arq worker settings.
 
 Run with ``arq leadgen.queue.worker.WorkerSettings`` in a dedicated
-Railway service. The worker uses the existing Telegram Bot client to
-build its ProgressSink + DeliverySink so live updates keep flowing
-during a queued run; the web-sink variant lives in the web_api
-adapter (commit E/F).
+Railway service. The job routes on ``SearchQuery.source``: Telegram
+searches still get an aiogram-backed Bot + TelegramProgressSink /
+TelegramDeliverySink, web searches get a ``BrokerProgressSink`` +
+``WebDeliverySink`` so the SSE endpoint has something to stream.
 """
 
 from __future__ import annotations
@@ -16,7 +16,9 @@ from typing import Any
 from arq.connections import RedisSettings
 
 from leadgen.config import get_settings
-from leadgen.pipeline.search import run_search
+from leadgen.db.models import SearchQuery
+from leadgen.db.session import session_factory
+from leadgen.pipeline.search import run_search, run_search_with_sinks
 
 logger = logging.getLogger(__name__)
 
@@ -27,16 +29,43 @@ async def run_search_job(
     chat_id: int | None,
     user_profile: dict[str, Any] | None,
 ) -> None:
-    """arq entry point — rebuilds the Bot handle and delegates.
+    """arq entry point — picks sinks based on SearchQuery.source.
 
-    For MVP we still target a Telegram chat: the job carries a
-    ``chat_id`` and we construct an aiogram Bot from ``BOT_TOKEN`` on
-    the worker side. Later we'll branch on a ``target`` discriminator
-    to pick Telegram vs web sinks.
+    Web searches: ``chat_id`` is None. We read ``SearchQuery.source``
+    off the DB and, when it's "web", run the pure pipeline with the
+    progress broker + web delivery sink so the SSE endpoint streams
+    phase/update/finish events to the browser.
     """
     query_id = uuid.UUID(query_id_str)
+
+    async with session_factory() as session:
+        query = await session.get(SearchQuery, query_id)
+        if query is None:
+            logger.error("run_search_job: query %s not found", query_id)
+            return
+        source = query.source or "telegram"
+
+    if source == "web":
+        from leadgen.adapters.web_api.sinks import WebDeliverySink
+        from leadgen.core.services import default_broker
+        from leadgen.core.services.progress_broker import BrokerProgressSink
+
+        progress = BrokerProgressSink(default_broker, query_id)
+        delivery = WebDeliverySink(query_id)
+        await run_search_with_sinks(
+            query_id=query_id,
+            progress=progress,
+            delivery=delivery,
+            user_profile=user_profile,
+        )
+        return
+
+    # Telegram path — needs a chat to post into.
     if chat_id is None:
-        logger.warning("run_search_job: called without chat_id, skipping")
+        logger.warning(
+            "run_search_job: telegram-source query %s has no chat_id, skipping",
+            query_id,
+        )
         return
 
     from aiogram import Bot

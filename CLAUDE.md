@@ -163,59 +163,82 @@ that builds Telegram sinks and delegates.
 
 ---
 
-## 6. Current state (as of e732014)
+## 6. Current state (as of 538fdb3)
 
 ### Working in production
-- Bot full onboarding (6 steps with AI free-form parsing on every field)
-- `/profile` view + per-field edit + `/reset`
-- `/diag` integration health check
-- Search flow: free-form niche → AI-extracted niche picker → region → confirm → live progress bar → stats + insights + top-5 cards + Excel
-- Cross-run dedup via `user_seen_leads`
-- Bulletproof delivery (each step isolated)
-- 10-min hard timeout on searches
-- Auto-cleanup of Lead rows after delivery (keeps SearchQuery summary)
-- Atomic quota counter (currently NOT enforcing because BILLING_ENFORCED=false)
-- Partial unique index against parallel in-flight searches
-- Per-user rate limit (5 searches/min in memory)
-- Prometheus metrics on every terminal branch
-- /health + /metrics on FastAPI
-- Web landing page on Vercel with green health badge
+- Bot full onboarding, `/profile`, `/reset`, `/diag` — unchanged.
+- Telegram search flow — unchanged (still auto-cleanup for `source="telegram"`).
+- New: web search flow end-to-end on Vercel + Railway.
+  - Landing → /app (dashboard with live stats) → /app/search (Lumen chat
+    → SSE progress ring → done) → /app/sessions/[id] (lead grid + status
+    filter + AI insight strip + LeadDetailModal with status/notes PATCH)
+    → /app/leads (list/kanban/grid CRM) → /app/profile /team /settings.
+  - `/prototype` serves the original clickable design as static HTML.
 
-### Built but not yet user-facing
-- Web API endpoints: POST/GET `/api/v1/searches`, GET `/api/v1/searches/{id}/progress` (SSE)
-- BrokerProgressSink (in-process pub/sub for SSE)
-- BillingService, ProfileService, sink protocols — used by bot, ready for web
-- Team/Membership tables (no UI yet)
-- arq queue scaffolding (needs Redis)
+### New web API (no auth in demo mode; SSE still gated by WEB_API_KEY if set)
+- `POST /api/v1/searches`          — creates `source="web"` row, enqueues
+  on arq if REDIS_URL set, otherwise `asyncio.create_task` inline.
+- `GET  /api/v1/searches?user_id=0` (or any id)  — list sessions.
+- `GET  /api/v1/searches/{id}`     — single session summary.
+- `GET  /api/v1/searches/{id}/leads?temp=hot|warm|cold`
+- `GET  /api/v1/leads?user_id=0&lead_status=new&limit=500` — CRM list with
+  `sessions_by_id` map so clients don't need to re-fetch parents.
+- `PATCH /api/v1/leads/{id}`       — `lead_status` / `owner_user_id` /
+  `notes`; bumps `last_touched_at`.
+- `GET  /api/v1/stats?user_id=0`   — dashboard rollup (sessions, hot/warm/cold).
+- `GET  /api/v1/team`              — falls back to demo roster when empty.
+- `GET  /api/v1/searches/{id}/progress` (SSE)  — unchanged shape, auth
+  now optional.
 
-### NOT built yet (next session likely starts here)
-- Web frontend pages beyond landing: login, dashboard, new-search form,
-  search-detail-with-SSE
-- `GET /api/v1/searches/{id}/leads` endpoint (need this for the web to show results)
-- POST `/api/v1/searches` doesn't actually invoke the pipeline yet —
-  it creates a row and tries to enqueue (which fails without Redis).
-  Need to either enable arq + Redis or spawn `asyncio.create_task` inline.
-- `WebDeliverySink` — currently the search auto-deletes leads, so the web
-  can't read them after. Either delay cleanup or persist via a delivery sink.
-- Real auth (magic link via Resend) — currently single shared API key
-- Outreach message generation
-- Email/phone/website verification
-- Decision-maker discovery (scrape /team /about pages)
-- Multi-source collectors (OSM/Foursquare/Yelp/2GIS-non-RU)
-- CRM-lite (lead status: new/contacted/replied/closed)
-- Stripe / Telegram Stars billing
+### Schema (migration 20260424_0006)
+- `search_queries.source` (`"telegram"` default, `"web"` for web).
+- `leads.lead_status` / `owner_user_id` / `notes` / `last_touched_at`
+  for CRM state.
+- Seeded `users(id=0, first_name='Web Demo', queries_limit=100000)` —
+  FK target for web searches until auth ships.
 
-### IMPORTANT pending design decisions (user has NOT approved)
-- Web UI structure (single dashboard vs multi-page, kanban vs list, …)
-- Visual style (Linear-like / Vercel-like / colorful)
-- Auth method (API key vs magic link vs Telegram login)
-- Lead card depth (minimum vs full vs with-outreach)
-- Whether to include CRM in v1
+### Web runtime rules
+- `_cleanup_leads` in `pipeline/search.py` is SKIPPED when
+  `SearchQuery.source == "web"`. Telegram behavior unchanged.
+- `run_search_job` (arq worker) branches on `SearchQuery.source`: web
+  searches get `BrokerProgressSink + WebDeliverySink`; telegram keeps
+  `TelegramProgressSink + TelegramDeliverySink`.
+- When Redis isn't configured, `POST /api/v1/searches` falls back to
+  `asyncio.create_task(_run_web_search_inline(...))` in the API process
+  so the site works without a worker service.
 
-**Do not start coding the frontend until user explicitly approves
-each of these.** Last session he stopped me mid-typing: "стой я тебе
-не говорю чтоб все чтобы ты работал над интерфейсом потому что мы их
-ещё пока не утвердили".
+### Frontend stack
+- Next.js 14 App Router + inline-style design system (ported from prototype's
+  `styles.css` into `frontend/app/globals.css`). Inter + JetBrains Mono via
+  `next/font`. No Tailwind classes in ported pages (only in HealthBadge).
+- `frontend/lib/api.ts` — typed client. `frontend/lib/useProgress.ts` —
+  EventSource hook.
+
+### Decisions the user approved this round
+- **Auth:** NO auth for now. Gate the site once real login lands; for the
+  demo anyone with the URL hits `/app` directly.
+- **Queue:** Redis + arq worker. Inline fallback keeps the site working
+  before Redis is provisioned — flip the switch when you're ready.
+- **Lead persistence:** web-origin leads KEPT forever (no cleanup).
+  Telegram-origin leads still deleted after delivery.
+- **MVP scope:** all 10 screens. Done in `538fdb3`.
+
+### Still NOT built (next work)
+- Real auth (Telegram Login Widget is the user's second choice when this
+  comes up — see question history; skip Magic Link unless he asks).
+- Outreach message generation per lead (Claude can already produce this;
+  hook a button on LeadDetailModal).
+- Real Excel download endpoint (button currently disabled).
+- Multi-source collectors (OSM/Foursquare/Yelp).
+- Stripe / Telegram Stars billing (tables exist, UI + webhooks missing).
+- Editable `/app/profile` — UI placeholder, no PATCH endpoint yet.
+
+### Open Railway tasks (USER must click in Railway UI)
+1. After next deploy auto-runs migration 0006, verify it lands clean via:
+   `curl https://leadgen-production-6758.up.railway.app/health`
+2. (Optional, for multi-user scale) provision Redis → set `REDIS_URL` →
+   add a second Railway service with start command:
+   `arq leadgen.queue.worker.WorkerSettings`
 
 ---
 

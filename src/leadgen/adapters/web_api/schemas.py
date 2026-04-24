@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class HealthResponse(BaseModel):
@@ -15,12 +15,19 @@ class HealthResponse(BaseModel):
     commit: str
 
 
+# ── Searches ────────────────────────────────────────────────────────
+
+
+# Magic user id for open-demo web searches (no auth yet). Telegram ids
+# start at 1, so 0 is free. Seeded by migration 20260424_0006.
+WEB_DEMO_USER_ID: int = 0
+
+
 class SearchCreate(BaseModel):
     user_id: int = Field(
-        ...,
-        description="Telegram user id that owns the query. For agency-internal "
-        "use this is just the bot user; later we switch to the web-session "
-        "user id.",
+        default=WEB_DEMO_USER_ID,
+        description="Telegram user id that owns the query. Web searches "
+        "use the synthetic demo user (id=0) until auth lands.",
     )
     niche: str = Field(..., min_length=2, max_length=256)
     region: str = Field(..., min_length=2, max_length=256)
@@ -28,17 +35,10 @@ class SearchCreate(BaseModel):
         default=None,
         description="BCP-47 language hint for Google Places (e.g. 'en', 'uk').",
     )
-    display_name: str | None = Field(
-        default=None,
-        max_length=64,
-        description="Optional display name persisted on the user row when we "
-        "auto-create them on first search.",
-    )
     profession: str | None = Field(
         default=None,
-        max_length=200,
-        description="What the requesting agency sells. Feeds the AI scoring "
-        "prompt so 'good lead for X' matches the user's actual offer.",
+        max_length=1000,
+        description="What the caller sells — feeds Claude when it scores each lead.",
     )
 
 
@@ -48,53 +48,116 @@ class SearchSummary(BaseModel):
     niche: str
     region: str
     status: str
+    source: str
     created_at: datetime
     finished_at: datetime | None
     leads_count: int
     avg_score: float | None
     hot_leads_count: int | None
     error: str | None
-    insights: str | None = None
+    insights: str | None = Field(
+        default=None,
+        description="High-level Claude summary for this search, pulled from "
+        "analysis_summary['insights']. None until the run completes.",
+    )
 
 
 class SearchCreateResponse(BaseModel):
     id: uuid.UUID
     queued: bool = Field(
         ...,
-        description="True if the job went onto the arq queue; False means the "
-        "search is running in-process via asyncio.create_task on the same "
-        "container that serves the API.",
-    )
-    running: bool = Field(
-        default=True,
-        description="True when the pipeline has been started (queued or in-"
-        "process). Always True on success — kept for symmetry with `queued`.",
+        description="True = enqueued on arq/Redis. False = running inline in the "
+        "API process via asyncio.create_task (works when Redis isn't configured).",
     )
 
 
-class LeadOut(BaseModel):
+# ── Leads ───────────────────────────────────────────────────────────
+
+
+class LeadResponse(BaseModel):
+    """What the web UI needs to render a lead card / detail modal / CRM row."""
+
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
+    query_id: uuid.UUID
+
     name: str
-    website: str | None = None
-    phone: str | None = None
-    address: str | None = None
-    category: str | None = None
-    rating: float | None = None
-    reviews_count: int | None = None
-    latitude: float | None = None
-    longitude: float | None = None
-    enriched: bool = False
-    score_ai: float | None = None
-    tags: list[str] | None = None
-    summary: str | None = None
-    advice: str | None = None
-    strengths: list[str] | None = None
-    weaknesses: list[str] | None = None
-    red_flags: list[str] | None = None
-    social_links: dict[str, str] | None = None
-    reviews_summary: str | None = None
+    category: str | None
+    address: str | None
+    phone: str | None
+    website: str | None
+    rating: float | None
+    reviews_count: int | None
+
+    # Enrichment / AI
+    score_ai: float | None
+    tags: list[str] | None
+    summary: str | None
+    advice: str | None
+    strengths: list[str] | None
+    weaknesses: list[str] | None
+    red_flags: list[str] | None
+    social_links: dict[str, str] | None
+
+    # CRM
+    lead_status: str
+    owner_user_id: int | None
+    notes: str | None
+    last_touched_at: datetime | None
+
+    created_at: datetime
 
 
-class SearchDetail(SearchSummary):
-    stats: dict[str, Any] | None = None
-    leads: list[LeadOut] = Field(default_factory=list)
+class LeadUpdate(BaseModel):
+    """PATCH payload for /api/v1/leads/{id}. All fields optional."""
+
+    lead_status: str | None = Field(
+        default=None,
+        description="One of: new | contacted | replied | won | archived.",
+    )
+    owner_user_id: int | None = Field(
+        default=None, description="Assignee user id. null clears the assignment."
+    )
+    notes: str | None = Field(default=None, max_length=10000)
+
+
+class LeadListResponse(BaseModel):
+    """Cross-session lead list for the /app/leads CRM page."""
+
+    leads: list[LeadResponse]
+    total: int
+    sessions_by_id: dict[str, dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Map of session_id → {niche, region} so the CRM can show "
+        "each row's parent session without a second round-trip.",
+    )
+
+
+# ── Dashboard stats ─────────────────────────────────────────────────
+
+
+class DashboardStats(BaseModel):
+    """Aggregate numbers for /app dashboard hero strip."""
+
+    sessions_total: int
+    sessions_running: int
+    leads_total: int
+    hot_total: int
+    warm_total: int
+    cold_total: int
+
+
+# ── Team (read-only for now) ────────────────────────────────────────
+
+
+class TeamMemberResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    role: str
+    initials: str
+    color: str
+    email: str | None = None
+    last_active: str | None = None

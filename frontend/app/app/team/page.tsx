@@ -1,131 +1,118 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-
-import { type AuthCreds, readAuth } from "@/lib/api";
+import { Topbar } from "@/components/layout/Topbar";
+import { Icon } from "@/components/Icon";
+import { type TeamMember, getTeam } from "@/lib/api";
+import { useLocale } from "@/lib/i18n";
 
 export default function TeamPage() {
-  const [creds, setCreds] = useState<AuthCreds | null>(null);
+  const { t } = useLocale();
+  const [members, setMembers] = useState<TeamMember[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setCreds(readAuth());
+    getTeam()
+      .then(setMembers)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  const initials = (creds?.displayName ?? "U").slice(0, 2).toUpperCase();
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <header>
-        <div className="eyebrow" style={{ marginBottom: 8 }}>
-          Team
-        </div>
-        <h1
-          style={{
-            fontSize: 30,
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
-            margin: 0,
-          }}
-        >
-          Your workspace members.
-        </h1>
-        <p
-          style={{
-            fontSize: 14,
-            color: "var(--text-muted)",
-            margin: "6px 0 0",
-          }}
-        >
-          Right now every name is its own workspace. Shared team quotas and
-          per-seat roles land once the invite flow is wired up.
-        </p>
-      </header>
-
-      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "auto 1fr auto auto",
-            gap: 16,
-            padding: "18px 20px",
-            alignItems: "center",
-          }}
-        >
+    <>
+      <Topbar
+        title={t("team.title")}
+        subtitle={t("team.subtitle")}
+        right={
+          <button className="btn btn-sm" type="button" disabled>
+            <Icon name="plus" size={14} /> {t("common.invite")}
+          </button>
+        }
+      />
+      <div className="page" style={{ maxWidth: 900 }}>
+        {error && (
           <div
+            className="card"
             style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
-              background: "var(--accent)",
-              color: "white",
-              display: "grid",
-              placeItems: "center",
-              fontSize: 14,
-              fontWeight: 700,
+              padding: 14,
+              color: "var(--cold)",
+              borderColor: "var(--cold)",
+              marginBottom: 16,
             }}
           >
-            {initials}
+            {error}
           </div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>
-              {creds?.displayName ?? "—"}
-            </div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              id {creds?.userId ?? "—"}
-            </div>
-          </div>
-          <span className="chip chip-accent">Owner</span>
-          <span
+        )}
+        {members && members.length === 0 && !error && (
+          <div
+            className="card"
             style={{
-              fontSize: 12,
-              color: "var(--text-dim)",
-              textTransform: "uppercase",
-              letterSpacing: "0.1em",
-            }}
-          >
-            You
-          </span>
-        </div>
-      </div>
-
-      <div
-        className="card"
-        style={{
-          padding: 28,
-          background:
-            "linear-gradient(135deg, var(--surface), var(--surface-2))",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <div className="mesh-bg" style={{ opacity: 0.35 }} />
-        <div style={{ position: "relative" }}>
-          <div className="eyebrow" style={{ marginBottom: 10 }}>
-            Next up
-          </div>
-          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
-            Invite a teammate
-          </div>
-          <p
-            style={{
-              fontSize: 14,
+              padding: 32,
+              textAlign: "center",
               color: "var(--text-muted)",
-              lineHeight: 1.55,
-              margin: "0 0 16px",
-              maxWidth: 520,
             }}
           >
-            Invites, role assignment (owner / member / viewer) and a shared
-            quota bucket are queued for the next iteration. The backend
-            models are already in place (Team / TeamMembership) — the UI to
-            drive them is the last step.
-          </p>
-          <Link href="/app/search" className="btn">
-            Run a search instead →
-          </Link>
-        </div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>
+              {t("team.empty.title")}
+            </div>
+            <div style={{ fontSize: 13, marginTop: 6 }}>
+              {t("team.empty.body")}
+            </div>
+          </div>
+        )}
+        {members && members.length > 0 && (
+          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>{t("team.table.member")}</th>
+                  <th>{t("team.table.role")}</th>
+                  <th>{t("team.table.active")}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {members.map((m) => (
+                  <tr key={m.id}>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div className="avatar" style={{ background: m.color }}>
+                          {m.initials}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{m.name}</div>
+                          {m.email && (
+                            <div
+                              style={{
+                                fontSize: 11.5,
+                                color: "var(--text-muted)",
+                              }}
+                            >
+                              {m.email}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="chip" style={{ fontSize: 11 }}>
+                        {m.role}
+                      </span>
+                    </td>
+                    <td style={{ color: "var(--text-muted)", fontSize: 12.5 }}>
+                      {m.last_active ?? t("common.none")}
+                    </td>
+                    <td>
+                      <button className="btn-icon" type="button">
+                        <Icon name="moreH" size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
-    </div>
+    </>
   );
 }

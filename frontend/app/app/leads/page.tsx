@@ -1,328 +1,390 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-
+import { Topbar } from "@/components/layout/Topbar";
+import { Icon } from "@/components/Icon";
+import { LeadCard } from "@/components/app/LeadCard";
+import { LeadDetailModal } from "@/components/app/LeadDetailModal";
 import {
-  type LeadOut,
-  type SearchSummary,
-  getSearchLeads,
-  listSearches,
-  readAuth,
+  type Lead,
+  type LeadListResponse,
+  type LeadStatus,
+  getAllLeads,
+  tempOf,
 } from "@/lib/api";
+import { useLocale, type TranslationKey } from "@/lib/i18n";
 
-interface EnrichedLead extends LeadOut {
-  searchId: string;
-  searchNiche: string;
-  searchRegion: string;
-}
+type View = "list" | "kanban" | "grid";
+type Filter = "all" | LeadStatus;
 
-type Temp = "hot" | "warm" | "cold";
+const STATUS_ORDER: LeadStatus[] = [
+  "new",
+  "contacted",
+  "replied",
+  "won",
+  "archived",
+];
 
-const TEMP_BOUNDS: Record<Temp, [number, number]> = {
-  hot: [75, 101],
-  warm: [50, 75],
-  cold: [0, 50],
-};
-
-export default function LeadsPage() {
-  const [leads, setLeads] = useState<EnrichedLead[] | null>(null);
+export default function LeadsCRMPage() {
+  const { t } = useLocale();
+  const [data, setData] = useState<LeadListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"all" | Temp>("all");
-  const [search, setSearch] = useState("");
+  const [view, setView] = useState<View>("list");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [active, setActive] = useState<Lead | null>(null);
 
   useEffect(() => {
-    const creds = readAuth();
-    if (!creds) return;
-    (async () => {
-      try {
-        const sessions = await listSearches(creds, 50);
-        const done = sessions.filter((s) => s.status === "done");
-        // Fetch leads for each recent done-session in parallel.
-        const batches = await Promise.all(
-          done.slice(0, 10).map(async (s: SearchSummary) => {
-            try {
-              const rows = await getSearchLeads(creds, s.id);
-              return rows.map((lead) => ({
-                ...lead,
-                searchId: s.id,
-                searchNiche: s.niche,
-                searchRegion: s.region,
-              }));
-            } catch {
-              return [] as EnrichedLead[];
-            }
-          })
-        );
-        const flat = batches.flat().sort((a, b) => {
-          const sa = a.score_ai ?? -1;
-          const sb = b.score_ai ?? -1;
-          return sb - sa;
-        });
-        setLeads(flat);
-      } catch (e) {
-        const err = e as { detail?: string };
-        setError(err.detail ?? "Failed to load leads.");
-      }
-    })();
+    getAllLeads({ limit: 500 })
+      .then(setData)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  const filtered = useMemo(() => {
-    if (!leads) return [];
-    const q = search.trim().toLowerCase();
-    return leads.filter((l) => {
-      if (filter !== "all") {
-        const [lo, hi] = TEMP_BOUNDS[filter];
-        const s = l.score_ai ?? -1;
-        if (s < lo || s >= hi) return false;
-      }
-      if (!q) return true;
-      return (
-        l.name.toLowerCase().includes(q) ||
-        (l.category ?? "").toLowerCase().includes(q) ||
-        (l.address ?? "").toLowerCase().includes(q) ||
-        l.searchNiche.toLowerCase().includes(q) ||
-        l.searchRegion.toLowerCase().includes(q)
-      );
-    });
-  }, [leads, filter, search]);
+  const sessions = data?.sessions_by_id ?? {};
+  const leads = data?.leads ?? [];
+
+  const filtered = useMemo(
+    () =>
+      filter === "all"
+        ? leads
+        : leads.filter((l) => l.lead_status === filter),
+    [filter, leads],
+  );
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<LeadStatus, number> = {
+      new: 0,
+      contacted: 0,
+      replied: 0,
+      won: 0,
+      archived: 0,
+    };
+    for (const l of leads) counts[l.lead_status]++;
+    return counts;
+  }, [leads]);
+
+  const relative = (ts: string): string => {
+    const then = new Date(ts).getTime();
+    if (Number.isNaN(then)) return t("common.none");
+    const diff = Date.now() - then;
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return t("crm.relative.now");
+    if (m < 60) return t("crm.relative.m", { n: m });
+    const h = Math.floor(m / 60);
+    if (h < 24) return t("crm.relative.h", { n: h });
+    const d = Math.floor(h / 24);
+    return t("crm.relative.d", { n: d });
+  };
+
+  const updateLocalLead = (updated: Lead) => {
+    setData((d) =>
+      d
+        ? {
+            ...d,
+            leads: d.leads.map((l) => (l.id === updated.id ? updated : l)),
+          }
+        : d,
+    );
+  };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "flex-end",
-          justifyContent: "space-between",
-          gap: 16,
-        }}
-      >
-        <div>
-          <div className="eyebrow" style={{ marginBottom: 8 }}>
-            Lead base
+    <>
+      <Topbar
+        title={t("crm.title")}
+        subtitle={t("crm.subtitle", {
+          leads: leads.length,
+          sessions: Object.keys(sessions).length,
+        })}
+        right={
+          <button className="btn btn-ghost btn-sm" type="button" disabled>
+            <Icon name="download" size={14} /> {t("common.export")}
+          </button>
+        }
+      />
+      <div className="page">
+        {error && (
+          <div
+            className="card"
+            style={{
+              padding: 14,
+              color: "var(--cold)",
+              borderColor: "var(--cold)",
+              marginBottom: 16,
+            }}
+          >
+            {error}
           </div>
-          <h1
-            style={{
-              fontSize: 30,
-              fontWeight: 700,
-              letterSpacing: "-0.02em",
-              margin: 0,
-            }}
-          >
-            Every lead you've collected.
-          </h1>
-          <p
-            style={{
-              fontSize: 14,
-              color: "var(--text-muted)",
-              margin: "6px 0 0",
-            }}
-          >
-            Aggregated across your recent sessions. Sort by score, filter by
-            temperature, search any field.
-          </p>
-        </div>
-        <Link href="/app/search" className="btn">
-          + New search
-        </Link>
-      </header>
+        )}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr auto",
-          gap: 12,
-          alignItems: "center",
-        }}
-      >
-        <input
-          className="input"
-          placeholder="Search by name, category, address, niche, region…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <div style={{ display: "flex", gap: 6 }}>
-          {(["all", "hot", "warm", "cold"] as const).map((t) => (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 16,
+            gap: 12,
+          }}
+        >
+          <div className="seg">
             <button
-              key={t}
               type="button"
-              onClick={() => setFilter(t)}
-              className={filter === t ? "btn btn-sm" : "btn btn-ghost btn-sm"}
-              style={{ textTransform: "capitalize" }}
+              className={filter === "all" ? "active" : ""}
+              onClick={() => setFilter("all")}
             >
-              {t}
+              {t("crm.status.all")} · {leads.length}
             </button>
-          ))}
+            {STATUS_ORDER.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={filter === s ? "active" : ""}
+                onClick={() => setFilter(s)}
+              >
+                {t(`crm.status.${s}` as TranslationKey)} · {statusCounts[s]}
+              </button>
+            ))}
+          </div>
+          <div className="seg">
+            <button
+              type="button"
+              className={view === "list" ? "active" : ""}
+              onClick={() => setView("list")}
+            >
+              <Icon name="list" size={14} />
+            </button>
+            <button
+              type="button"
+              className={view === "kanban" ? "active" : ""}
+              onClick={() => setView("kanban")}
+            >
+              <Icon name="kanban" size={14} />
+            </button>
+            <button
+              type="button"
+              className={view === "grid" ? "active" : ""}
+              onClick={() => setView("grid")}
+            >
+              <Icon name="grid" size={14} />
+            </button>
+          </div>
         </div>
-      </div>
 
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "var(--cold)", color: "var(--cold)" }}
-        >
-          {error}
-        </div>
-      )}
-
-      {!error && leads == null && (
-        <div className="card">
+        {leads.length === 0 && !error && (
           <div
-            className="skeleton"
-            style={{ width: "60%", height: 14, marginBottom: 10 }}
-          />
-          <div className="skeleton" style={{ width: "40%", height: 12 }} />
-        </div>
-      )}
-
-      {leads && leads.length === 0 && !error && (
-        <div
-          className="card"
-          style={{ padding: 48, textAlign: "center", color: "var(--text-muted)" }}
-        >
-          <div
+            className="card"
             style={{
-              fontSize: 16,
-              fontWeight: 600,
-              marginBottom: 8,
-              color: "var(--text)",
+              padding: 32,
+              textAlign: "center",
+              color: "var(--text-muted)",
             }}
           >
-            No leads yet.
+            {t("crm.empty")}
           </div>
-          Run a search — the leads will show up here.
-        </div>
-      )}
+        )}
 
-      {filtered.length > 0 && (
-        <div
-          className="card"
-          style={{ padding: 0, overflow: "hidden" }}
-        >
+        {view === "list" && filtered.length > 0 && (
+          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th />
+                  <th>{t("crm.table.lead")}</th>
+                  <th>{t("crm.table.session")}</th>
+                  <th>{t("crm.table.score")}</th>
+                  <th>{t("crm.table.status")}</th>
+                  <th>{t("crm.table.touched")}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((l) => {
+                  const session = sessions[l.query_id];
+                  const score = Math.round(l.score_ai ?? 0);
+                  const temp = tempOf(l.score_ai);
+                  return (
+                    <tr
+                      key={l.id}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => setActive(l)}
+                    >
+                      <td style={{ width: 24 }}>
+                        <span className={"status-dot " + temp} />
+                      </td>
+                      <td>
+                        <div style={{ fontSize: 13.5, fontWeight: 600 }}>
+                          {l.name}
+                        </div>
+                        <div
+                          style={{ fontSize: 11.5, color: "var(--text-muted)" }}
+                        >
+                          {l.address}
+                        </div>
+                      </td>
+                      <td>
+                        {session ? (
+                          <span className="chip" style={{ fontSize: 11 }}>
+                            {session.niche} · {session.region}
+                          </span>
+                        ) : (
+                          <span style={{ color: "var(--text-dim)" }}>
+                            {t("common.none")}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            fontFamily: "var(--font-mono)",
+                            fontWeight: 700,
+                            color:
+                              score >= 75
+                                ? "var(--hot)"
+                                : score >= 50
+                                  ? "#B45309"
+                                  : "var(--cold)",
+                          }}
+                        >
+                          {score}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="chip" style={{ fontSize: 11 }}>
+                          {t(
+                            `lead.statusLabel.${l.lead_status}` as TranslationKey,
+                          )}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                        {l.last_touched_at
+                          ? relative(l.last_touched_at)
+                          : t("common.none")}
+                      </td>
+                      <td>
+                        <Icon
+                          name="chevronRight"
+                          size={14}
+                          style={{ color: "var(--text-dim)" }}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {view === "kanban" && (
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "auto 1fr 130px 140px 180px",
-              gap: 12,
-              padding: "14px 20px",
-              borderBottom: "1px solid var(--border)",
-              fontSize: 11,
-              fontWeight: 600,
-              color: "var(--text-dim)",
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
+              gridTemplateColumns: "repeat(5, 1fr)",
+              gap: 14,
             }}
           >
-            <span></span>
-            <span>Company</span>
-            <span>Score</span>
-            <span>Rating</span>
-            <span>Session</span>
+            {STATUS_ORDER.map((col) => {
+              const items = leads.filter((l) => l.lead_status === col);
+              return (
+                <div
+                  key={col}
+                  style={{
+                    background: "var(--surface-2)",
+                    borderRadius: 12,
+                    padding: 12,
+                    minHeight: 400,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: 12,
+                      padding: "0 4px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {t(`lead.statusLabel.${col}` as TranslationKey)}
+                    </div>
+                    <div
+                      className="chip"
+                      style={{ fontSize: 11, background: "var(--surface)" }}
+                    >
+                      {items.length}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {items.map((l) => {
+                      const score = Math.round(l.score_ai ?? 0);
+                      const temp = tempOf(l.score_ai);
+                      return (
+                        <div
+                          key={l.id}
+                          className="card"
+                          style={{ padding: 12, cursor: "pointer" }}
+                          onClick={() => setActive(l)}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              marginBottom: 6,
+                            }}
+                          >
+                            <span className={"status-dot " + temp} />
+                            <span
+                              style={{
+                                fontFamily: "var(--font-mono)",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                color: score >= 75 ? "var(--hot)" : "#B45309",
+                              }}
+                            >
+                              {score}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                            {l.name}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                            {l.address}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          {filtered.map((lead) => (
-            <LeadRow key={lead.id} lead={lead} />
-          ))}
-        </div>
-      )}
+        )}
 
-      {leads && leads.length > 0 && (
-        <div
-          style={{
-            fontSize: 12,
-            color: "var(--text-dim)",
-            textAlign: "right",
-          }}
-        >
-          Showing {filtered.length} of {leads.length} leads
-        </div>
+        {view === "grid" && filtered.length > 0 && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+              gap: 14,
+            }}
+          >
+            {filtered.map((l) => (
+              <LeadCard key={l.id} lead={l} onClick={() => setActive(l)} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {active && (
+        <LeadDetailModal
+          lead={active}
+          onClose={() => setActive(null)}
+          onUpdated={updateLocalLead}
+        />
       )}
-    </div>
+    </>
   );
 }
-
-function LeadRow({ lead }: { lead: EnrichedLead }) {
-  const temp: Temp =
-    lead.score_ai != null && lead.score_ai >= 75
-      ? "hot"
-      : lead.score_ai != null && lead.score_ai >= 50
-        ? "warm"
-        : "cold";
-  return (
-    <Link
-      href={`/app/searches/${lead.searchId}`}
-      style={{
-        display: "grid",
-        gridTemplateColumns: "auto 1fr 130px 140px 180px",
-        gap: 12,
-        padding: "14px 20px",
-        borderTop: "1px solid var(--border)",
-        alignItems: "center",
-        fontSize: 14,
-        transition: "background 0.12s",
-      }}
-      onMouseEnter={(e) =>
-        (e.currentTarget.style.background = "var(--surface-2)")
-      }
-      onMouseLeave={(e) =>
-        (e.currentTarget.style.background = "transparent")
-      }
-    >
-      <span className={`status-dot ${temp}`} />
-      <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            fontWeight: 600,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {lead.name}
-        </div>
-        <div
-          style={{
-            fontSize: 12,
-            color: "var(--text-muted)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {lead.category ?? "—"}
-          {lead.address ? ` · ${lead.address}` : ""}
-        </div>
-      </div>
-      <div
-        className="mono"
-        style={{
-          fontWeight: 600,
-          color:
-            temp === "hot"
-              ? "var(--hot)"
-              : temp === "warm"
-                ? "#b45309"
-                : "var(--cold)",
-        }}
-      >
-        {lead.score_ai != null ? Math.round(lead.score_ai) : "—"}
-      </div>
-      <div style={{ color: "var(--text-muted)" }}>
-        {lead.rating != null ? `★ ${lead.rating}` : "—"}
-        {lead.reviews_count ? ` (${lead.reviews_count})` : ""}
-      </div>
-      <div
-        style={{
-          fontSize: 12,
-          color: "var(--text-muted)",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-        title={`${lead.searchNiche} · ${lead.searchRegion}`}
-      >
-        {lead.searchNiche} · {lead.searchRegion}
-      </div>
-    </Link>
-  );
-}
-

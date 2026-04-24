@@ -1,46 +1,16 @@
 "use client";
 
+import { useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { Icon } from "@/components/Icon";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { PREVIEW_LEADS } from "@/lib/mockLeads";
+import { useLocale } from "@/lib/i18n";
 
-const STATS = [
-  { num: "90s", label: "Avg. search time" },
-  { num: "50", label: "Leads per query" },
-  { num: "87%", label: "Contact-info accuracy" },
-  { num: "12×", label: "Faster than manual" },
-];
-
-const STEPS = [
-  {
-    n: "01",
-    t: "Describe your target",
-    d: "Type a niche and a region. That's it — no filter matrix, no form fatigue. Our assistant can help you narrow it too.",
-  },
-  {
-    n: "02",
-    t: "We search, enrich, score",
-    d: "We pull matches from Google Places, visit every site, grab socials and reviews, and pass each lead through Claude for a personalized score.",
-  },
-  {
-    n: "03",
-    t: "Work them as a list",
-    d: "Every lead gets an AI-written pitch tailored to your offer. Sort by score, open the details, export the full base to Excel.",
-  },
-];
-
-export default function LandingPage() {
-  const router = useRouter();
+export default function HomePage() {
+  const { t } = useLocale();
   const [niche, setNiche] = useState("");
   const [region, setRegion] = useState("");
-
-  const startSearch = () => {
-    const qs = new URLSearchParams();
-    if (niche.trim()) qs.set("niche", niche.trim());
-    if (region.trim()) qs.set("region", region.trim());
-    const query = qs.toString();
-    router.push(`/login${query ? `?${query}` : ""}`);
-  };
 
   return (
     <div
@@ -51,14 +21,12 @@ export default function LandingPage() {
         position: "relative",
       }}
     >
-      {/* Top nav */}
-      <header
+      <div
         style={{
           position: "sticky",
           top: 0,
           zIndex: 50,
-          background:
-            "color-mix(in srgb, var(--bg) 85%, transparent)",
+          background: "color-mix(in srgb, var(--bg) 85%, transparent)",
           backdropFilter: "blur(14px)",
           borderBottom: "1px solid var(--border)",
         }}
@@ -73,49 +41,32 @@ export default function LandingPage() {
             justifyContent: "space-between",
           }}
         >
-          <Link href="/" className="sidebar-logo">
-            <span className="sidebar-logo-mark">L</span>
-            <span>Leadgen</span>
-          </Link>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Link href="/login" className="btn btn-ghost btn-sm">
-              Sign in
+            <LogoMark />
+            <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em" }}>
+              Leadgen
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <LanguageSwitcher compact />
+            <Link href="/app" className="btn btn-ghost btn-sm">
+              {t("landing.nav.openWorkspace")}
             </Link>
-            <Link href="/login" className="btn btn-sm">
-              Open workspace
+            <Link href="/app/search" className="btn btn-sm">
+              {t("landing.nav.runSearch")}
             </Link>
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Hero */}
-      <section
-        style={{
-          position: "relative",
-          padding: "80px 32px 120px",
-          overflow: "hidden",
-        }}
-      >
-        <div className="mesh-bg" style={{ inset: "-80px -80px auto -80px", height: 620 }} />
-        <div
-          style={{
-            maxWidth: 1100,
-            margin: "0 auto",
-            position: "relative",
-            textAlign: "center",
-          }}
-        >
-          <div
-            className="eyebrow"
-            style={{
-              marginBottom: 28,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <span className="status-dot live" />
-            B2B lead intelligence — live in 90 seconds
+      <section style={{ position: "relative", padding: "80px 32px 120px", overflow: "hidden" }}>
+        <div className="mesh-bg">
+          <div className="blob3" />
+        </div>
+        <div style={{ maxWidth: 1100, margin: "0 auto", position: "relative", textAlign: "center" }}>
+          <div className="eyebrow" style={{ marginBottom: 28 }}>
+            <span className="status-dot live" style={{ marginRight: 8 }} />
+            {t("landing.hero.eyebrow")}
           </div>
           <h1
             style={{
@@ -125,24 +76,22 @@ export default function LandingPage() {
               lineHeight: 0.95,
               margin: "0 0 32px",
               textWrap: "balance",
-            }}
+            } as CSSProperties}
           >
-            The first{" "}
+            {t("landing.hero.titlePre")}{" "}
             <span
               style={{
-                background:
-                  "linear-gradient(120deg, var(--accent), #ec4899, #f59e0b)",
+                background: "linear-gradient(120deg, var(--accent), #EC4899, #F59E0B)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
               }}
             >
-              50 prospects
+              {t("landing.hero.titleAccent")}
             </span>
             <br />
-            that actually
+            {t("landing.hero.titlePost1")}
             <br />
-            fit your service.
+            {t("landing.hero.titlePost2")}
           </h1>
           <p
             style={{
@@ -152,22 +101,15 @@ export default function LandingPage() {
               margin: "0 auto 40px",
               lineHeight: 1.55,
               textWrap: "balance",
-            }}
+            } as CSSProperties}
           >
-            Describe who you're selling to. We pull every match from Google
-            Places, scan their sites and reviews, and hand you an AI-scored
-            list with a custom pitch for each one.
+            {t("landing.hero.subtitle")}
           </p>
 
-          {/* Live search bar */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              startSearch();
-            }}
+          <div
             style={{
               maxWidth: 720,
-              margin: "0 auto 18px",
+              margin: "0 auto 20px",
               display: "grid",
               gridTemplateColumns: "1fr 220px auto",
               gap: 8,
@@ -180,19 +122,14 @@ export default function LandingPage() {
           >
             <input
               className="input"
-              placeholder="roofing companies"
+              placeholder={t("landing.hero.nichePh")}
               value={niche}
               onChange={(e) => setNiche(e.target.value)}
-              style={{
-                border: "none",
-                background: "transparent",
-                fontSize: 16,
-                padding: "14px 16px",
-              }}
+              style={{ border: "none", background: "transparent", fontSize: 16, padding: "14px 16px" }}
             />
             <input
               className="input"
-              placeholder="New York"
+              placeholder={t("landing.hero.regionPh")}
               value={region}
               onChange={(e) => setRegion(e.target.value)}
               style={{
@@ -204,36 +141,25 @@ export default function LandingPage() {
                 borderRadius: 0,
               }}
             />
-            <button type="submit" className="btn btn-lg">
-              Run search →
-            </button>
-          </form>
+            <Link
+              href={`/app/search${niche || region ? `?niche=${encodeURIComponent(niche)}&region=${encodeURIComponent(region)}` : ""}`}
+              className="btn btn-lg"
+              style={{ justifyContent: "center" }}
+            >
+              {t("landing.hero.runSearch")} <Icon name="arrow" size={16} />
+            </Link>
+          </div>
           <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
-            Try it with your own niche — we'll show you what we'd find
+            {t("landing.hero.hint")}
           </div>
         </div>
 
-        {/* Fake dashboard preview */}
-        <div
-          style={{
-            maxWidth: 1100,
-            margin: "80px auto 0",
-            position: "relative",
-            padding: "0 32px",
-          }}
-        >
+        <div style={{ maxWidth: 1100, margin: "80px auto 0", position: "relative" }}>
           <LandingPreview />
         </div>
       </section>
 
-      {/* Stats row */}
-      <section
-        style={{
-          maxWidth: 1100,
-          margin: "0 auto",
-          padding: "20px 32px 100px",
-        }}
-      >
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 32px 100px" }}>
         <div
           style={{
             display: "grid",
@@ -245,12 +171,17 @@ export default function LandingPage() {
             overflow: "hidden",
           }}
         >
-          {STATS.map((s, i) => (
+          {[
+            { num: "90s", label: t("landing.stats.time") },
+            { num: "50", label: t("landing.stats.perQuery") },
+            { num: "87%", label: t("landing.stats.accuracy") },
+            { num: "12×", label: t("landing.stats.speed") },
+          ].map((s, i) => (
             <div
               key={s.label}
               style={{
                 padding: "28px 24px",
-                borderRight: i < STATS.length - 1 ? "1px solid var(--border)" : "none",
+                borderRight: i < 3 ? "1px solid var(--border)" : "none",
               }}
             >
               <div
@@ -280,16 +211,9 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* How it works */}
-      <section
-        style={{
-          maxWidth: 1100,
-          margin: "0 auto",
-          padding: "0 32px 120px",
-        }}
-      >
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "0 32px 120px" }}>
         <div className="eyebrow" style={{ marginBottom: 14 }}>
-          How it works
+          {t("landing.how.eyebrow")}
         </div>
         <h2
           style={{
@@ -301,27 +225,19 @@ export default function LandingPage() {
             maxWidth: 780,
           }}
         >
-          From niche to{" "}
-          <span
-            style={{
-              fontStyle: "italic",
-              fontWeight: 400,
-              color: "var(--text-muted)",
-            }}
-          >
-            outreach-ready
+          {t("landing.how.title1")}{" "}
+          <span style={{ fontStyle: "italic", fontWeight: 400, color: "var(--text-muted)" }}>
+            {t("landing.how.titleItalic")}
           </span>{" "}
-          list, without the grunt work.
+          {t("landing.how.title2")}
         </h2>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 20,
-          }}
-        >
-          {STEPS.map((s) => (
-            <div key={s.n} className="card" style={{ padding: "28px 24px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+          {[
+            { n: "01", t: t("landing.how.01.title"), d: t("landing.how.01.body") },
+            { n: "02", t: t("landing.how.02.title"), d: t("landing.how.02.body") },
+            { n: "03", t: t("landing.how.03.title"), d: t("landing.how.03.body") },
+          ].map((s) => (
+            <div key={s.n} className="card" style={{ padding: "28px 24px", position: "relative" }}>
               <div
                 style={{
                   fontFamily: "var(--font-mono)",
@@ -342,21 +258,12 @@ export default function LandingPage() {
               >
                 {s.t}
               </div>
-              <div
-                style={{
-                  fontSize: 14,
-                  lineHeight: 1.55,
-                  color: "var(--text-muted)",
-                }}
-              >
-                {s.d}
-              </div>
+              <div style={{ fontSize: 14, lineHeight: 1.55, color: "var(--text-muted)" }}>{s.d}</div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* CTA */}
       <section
         style={{
           padding: "80px 32px",
@@ -364,54 +271,29 @@ export default function LandingPage() {
           background: "var(--surface)",
         }}
       >
-        <div
-          style={{
-            maxWidth: 900,
-            margin: "0 auto",
-            textAlign: "center",
-            position: "relative",
-          }}
-        >
+        <div style={{ maxWidth: 900, margin: "0 auto", textAlign: "center", position: "relative" }}>
           <h2
             style={{
-              fontSize: "clamp(42px, 7vw, 64px)",
+              fontSize: 64,
               fontWeight: 700,
               letterSpacing: "-0.04em",
               lineHeight: 0.98,
               margin: "0 0 24px",
             }}
           >
-            Stop prospecting.
+            {t("landing.cta.title1")}
             <br />
-            <span
-              style={{
-                fontStyle: "italic",
-                fontWeight: 400,
-                color: "var(--text-muted)",
-              }}
-            >
-              Start closing.
+            <span style={{ fontStyle: "italic", fontWeight: 400, color: "var(--text-muted)" }}>
+              {t("landing.cta.title2")}
             </span>
           </h2>
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              justifyContent: "center",
-              marginTop: 36,
-            }}
-          >
-            <Link href="/login" className="btn btn-lg">
-              Open workspace →
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 36 }}>
+            <Link href="/app/search" className="btn btn-lg">
+              {t("landing.cta.primary")} <Icon name="arrow" size={16} />
             </Link>
-            <a
-              href="https://t.me/seventytimes_leadgen_bot"
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn-ghost btn-lg"
-            >
-              Or use the Telegram bot
-            </a>
+            <Link href="/prototype" className="btn btn-ghost btn-lg">
+              {t("landing.cta.secondary")}
+            </Link>
           </div>
         </div>
       </section>
@@ -426,25 +308,39 @@ export default function LandingPage() {
           color: "var(--text-dim)",
         }}
       >
-        <div>© 2026 Leadgen. Built for agencies.</div>
+        <div>{t("landing.footer.built")}</div>
         <div style={{ display: "flex", gap: 20 }}>
-          <span>Seventy Times Agency</span>
+          <a>{t("landing.footer.privacy")}</a>
+          <a>{t("landing.footer.terms")}</a>
+          <a>{t("landing.footer.contact")}</a>
         </div>
       </footer>
     </div>
   );
 }
 
-function LandingPreview() {
-  const leads = [
-    { name: "Apex Urban Roofing", address: "Brooklyn, NY", rating: 4.7, score: 88, temp: "hot" },
-    { name: "Hudson Valley Roofers", address: "Yonkers, NY", rating: 4.5, score: 78, temp: "hot" },
-    { name: "Bronx Skyline Roof Co.", address: "Bronx, NY", rating: 4.2, score: 62, temp: "warm" },
-    { name: "Queens Rooftop LLC", address: "Queens, NY", rating: 3.9, score: 41, temp: "cold" },
-  ];
-  const color = (t: string) =>
-    t === "hot" ? "var(--hot)" : t === "warm" ? "var(--warm)" : "var(--cold)";
+function LogoMark() {
+  return (
+    <div
+      style={{
+        width: 26,
+        height: 26,
+        borderRadius: 7,
+        background: "linear-gradient(135deg, var(--accent), #6a7bff)",
+        display: "grid",
+        placeItems: "center",
+        color: "white",
+        fontSize: 12,
+        fontWeight: 700,
+      }}
+    >
+      L
+    </div>
+  );
+}
 
+function LandingPreview() {
+  const { t } = useLocale();
   return (
     <div
       style={{
@@ -489,45 +385,27 @@ function LandingPreview() {
           display: "grid",
           gridTemplateColumns: "200px 1fr",
           gap: 20,
-          minHeight: 360,
+          minHeight: 420,
         }}
       >
         <div>
           <div className="eyebrow" style={{ marginBottom: 14, fontSize: 9 }}>
-            Session
+            {t("preview.session")}
           </div>
-          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>
-            Roofing · NYC
-          </div>
+          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Roofing · NYC</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 20 }}>
-            48 leads analyzed
+            {t("preview.analyzed", { n: 48 })}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
-            {[
-              { label: "Hot", value: 9, dot: "hot" },
-              { label: "Warm", value: 22, dot: "warm" },
-              { label: "Cold", value: 17, dot: "cold" },
-            ].map((r) => (
-              <div
-                key={r.label}
-                style={{ display: "flex", justifyContent: "space-between" }}
-              >
-                <span style={{ color: "var(--text-muted)" }}>
-                  <span
-                    className={`status-dot ${r.dot}`}
-                    style={{ marginRight: 6 }}
-                  />
-                  {r.label}
-                </span>
-                <span className="mono">{r.value}</span>
-              </div>
-            ))}
+            <PreviewStatLine label={t("preview.hot")} count={9} temp="hot" />
+            <PreviewStatLine label={t("preview.warm")} count={22} temp="warm" />
+            <PreviewStatLine label={t("preview.cold")} count={17} temp="cold" />
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {leads.map((l) => (
+          {PREVIEW_LEADS.map((l) => (
             <div
-              key={l.name}
+              key={l.id}
               style={{
                 border: "1px solid var(--border)",
                 borderRadius: 10,
@@ -538,15 +416,15 @@ function LandingPreview() {
                 gap: 14,
               }}
             >
-              <span className={`status-dot ${l.temp}`} />
+              <span className={"status-dot " + l.temp} />
               <div style={{ minWidth: 0 }}>
                 <div
                   style={{
                     fontSize: 13.5,
                     fontWeight: 600,
-                    whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {l.name}
@@ -555,9 +433,9 @@ function LandingPreview() {
                   style={{
                     fontSize: 11.5,
                     color: "var(--text-muted)",
-                    whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {l.address}
@@ -572,14 +450,19 @@ function LandingPreview() {
                   fontSize: 12,
                 }}
               >
-                ★ {l.rating}
+                <Icon name="star" size={12} /> {l.rating}
               </div>
               <div
                 style={{
                   fontFamily: "var(--font-mono)",
                   fontSize: 12,
                   fontWeight: 600,
-                  color: color(l.temp),
+                  color:
+                    l.score >= 75
+                      ? "var(--hot)"
+                      : l.score >= 50
+                        ? "var(--warm)"
+                        : "var(--cold)",
                 }}
               >
                 {l.score}
@@ -588,6 +471,26 @@ function LandingPreview() {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function PreviewStatLine({
+  label,
+  count,
+  temp,
+}: {
+  label: string;
+  count: number;
+  temp: "hot" | "warm" | "cold";
+}) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between" }}>
+      <span style={{ color: "var(--text-muted)" }}>
+        <span className={"status-dot " + temp} style={{ marginRight: 6 }} />
+        {label}
+      </span>
+      <span className="mono">{count}</span>
     </div>
   );
 }

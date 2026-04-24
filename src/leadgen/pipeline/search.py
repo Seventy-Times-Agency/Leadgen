@@ -114,7 +114,11 @@ async def run_search(
                 "Попробуй запустить снова через минуту или проверь /diag.",
             )
     finally:
-        await _cleanup_leads(query_id)
+        # Only Telegram-origin searches purge their Lead rows on exit. Web
+        # searches keep them so /api/v1/searches/{id}/leads can serve the
+        # CRM. Telegram is the default, so old rows keep the same behavior.
+        if await _search_source(query_id) != "web":
+            await _cleanup_leads(query_id)
 
 
 # ── Client-agnostic pipeline ───────────────────────────────────────────────
@@ -186,16 +190,26 @@ async def run_search_with_sinks(
             searches_total.labels(status="no_results").inc()
             return
 
-        # 2. Persist + cross-run dedup
+        # 2. Persist + cross-run dedup.
+        # The synthetic web-demo user (id=0) is shared by every visitor of
+        # the open demo. If we deduped against its seen-leads history the
+        # second visitor to search "roofing NYC" would get zero results —
+        # every company is already "seen" by somebody's prior run. Skip
+        # the dedup memory for user_id=0; real users keep the cross-run
+        # dedup that the Telegram flow relies on.
+        skip_dedup = user_id == 0
         async with session_factory() as session:
             incoming_source_ids = [r.source_id for r in raw_leads if r.source_id]
-            seen_rows = await session.execute(
-                select(UserSeenLead.source_id)
-                .where(UserSeenLead.user_id == user_id)
-                .where(UserSeenLead.source == "google_places")
-                .where(UserSeenLead.source_id.in_(incoming_source_ids))
-            )
-            already_seen: set[str] = {row[0] for row in seen_rows.all()}
+            if skip_dedup:
+                already_seen: set[str] = set()
+            else:
+                seen_rows = await session.execute(
+                    select(UserSeenLead.source_id)
+                    .where(UserSeenLead.user_id == user_id)
+                    .where(UserSeenLead.source == "google_places")
+                    .where(UserSeenLead.source_id.in_(incoming_source_ids))
+                )
+                already_seen = {row[0] for row in seen_rows.all()}
 
             batch_seen: set[str] = set()
             rows: list[Lead] = []
@@ -260,7 +274,7 @@ async def run_search_with_sinks(
                 return
 
             session.add_all(rows)
-            if seen_to_insert:
+            if seen_to_insert and not skip_dedup:
                 from sqlalchemy.dialects.postgresql import insert as pg_insert
                 stmt = pg_insert(UserSeenLead).values(seen_to_insert)
                 stmt = stmt.on_conflict_do_nothing(
@@ -430,3 +444,19 @@ async def _cleanup_leads(query_id: uuid.UUID) -> None:
         logger.info("cleanup: deleted leads for query %s", query_id)
     except Exception:  # noqa: BLE001
         logger.exception("cleanup: failed to delete leads for query %s", query_id)
+
+
+async def _search_source(query_id: uuid.UUID) -> str:
+    """Read SearchQuery.source ("telegram" | "web"). Defaults to telegram
+    on any lookup error so a failure here never accidentally KEEPS leads
+    for a Telegram-origin search (unexpected DB bloat is worse than
+    missing CRM history in a one-off edge case)."""
+    try:
+        async with session_factory() as session:
+            query = await session.get(SearchQuery, query_id)
+            if query is None:
+                return "telegram"
+            return query.source or "telegram"
+    except Exception:  # noqa: BLE001
+        logger.exception("_search_source: lookup failed for %s", query_id)
+        return "telegram"

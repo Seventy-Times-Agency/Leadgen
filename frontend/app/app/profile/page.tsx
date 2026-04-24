@@ -1,172 +1,49 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-
-import {
-  type AuthCreds,
-  clearAuth,
-  nameToUserId,
-  readAuth,
-  writeAuth,
-} from "@/lib/api";
+import { Topbar } from "@/components/layout/Topbar";
+import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n";
 
 export default function ProfilePage() {
-  const router = useRouter();
-  const [creds, setCreds] = useState<AuthCreds | null>(null);
-  const [displayName, setDisplayName] = useState("");
-  const [profession, setProfession] = useState("");
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    const c = readAuth();
-    if (!c) return;
-    setCreds(c);
-    setDisplayName(c.displayName);
-    setProfession(c.profession ?? "");
-  }, []);
-
-  if (!creds) return null;
-
-  const save = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = displayName.trim();
-    if (trimmed.length < 2) return;
-    // Name change rewrites user_id so the workspace follows the name,
-    // matching the login contract: "Same name = same workspace".
-    const nextUserId =
-      trimmed.toLowerCase() === creds.displayName.toLowerCase()
-        ? creds.userId
-        : nameToUserId(trimmed);
-    const next: AuthCreds = {
-      userId: nextUserId,
-      displayName: trimmed,
-      profession: profession.trim() || undefined,
-      apiKey: creds.apiKey,
-    };
-    writeAuth(next);
-    setCreds(next);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  const signOut = () => {
-    clearAuth();
-    router.replace("/");
-  };
-
+  const { t } = useLocale();
+  const empty = t("profile.empty");
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 24,
-        maxWidth: 640,
-      }}
-    >
-      <header>
-        <div className="eyebrow" style={{ marginBottom: 8 }}>
-          Profile
-        </div>
-        <h1
-          style={{
-            fontSize: 32,
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
-            margin: 0,
-          }}
-        >
-          Your workspace
-        </h1>
-        <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 6 }}>
-          "What you sell" is sent with every search so the AI scores leads
-          against the right offer.
-        </p>
-      </header>
-
-      <form onSubmit={save} className="card" style={{ padding: 28 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <Field label="Your name">
-            <input
-              className="input"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Denys"
-            />
-          </Field>
-          <Field label="What you sell">
-            <input
-              className="input"
-              value={profession}
-              onChange={(e) => setProfession(e.target.value)}
-              placeholder="web design & dev for small businesses"
-            />
-          </Field>
+    <>
+      <Topbar title={t("profile.title")} subtitle={t("profile.subtitle")} />
+      <div className="page" style={{ maxWidth: 720 }}>
+        <div className="card" style={{ padding: 28, marginBottom: 16 }}>
           <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              marginTop: 6,
-            }}
+            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}
           >
-            <button type="submit" className="btn">
-              Save
-            </button>
-            {saved && (
-              <span style={{ fontSize: 13, color: "var(--hot)" }}>
-                Saved.
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={signOut}
-              className="btn btn-ghost"
-              style={{ marginLeft: "auto" }}
-            >
-              Sign out
-            </button>
+            <Field label={t("profile.field.business")} value={empty} />
+            <Field label={t("profile.field.region")} value={empty} />
+            <Field label={t("profile.field.offer")} value={empty} />
+            <Field label={t("profile.field.niches")} value={empty} />
           </div>
         </div>
-      </form>
-
-      <div
-        className="card"
-        style={{
-          padding: 20,
-          fontSize: 13,
-          color: "var(--text-muted)",
-          lineHeight: 1.6,
-        }}
-      >
-        <b style={{ color: "var(--text)" }}>Heads up:</b> your workspace is
-        keyed on your name. Change the name and you'll start a fresh
-        workspace with no history — your old sessions stay where they were.
+        <div
+          className="card"
+          style={{ padding: 20, background: "var(--surface-2)" }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <Icon name="sparkles" size={16} style={{ color: "var(--accent)" }} />
+            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              {t("profile.hint")}
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function Field({ label, value }: { label: string; value: string }) {
   return (
-    <label style={{ display: "block" }}>
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 600,
-          color: "var(--text-muted)",
-          marginBottom: 6,
-        }}
-      >
+    <div>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>
         {label}
       </div>
-      {children}
-    </label>
+      <div style={{ fontSize: 14, color: "var(--text-muted)" }}>{value}</div>
+    </div>
   );
 }
