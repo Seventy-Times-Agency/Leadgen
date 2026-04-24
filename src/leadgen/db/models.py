@@ -104,6 +104,12 @@ class SearchQuery(Base):
     status: Mapped[str] = mapped_column(
         String(32), default="pending", nullable=False, index=True
     )
+    # Where the search was launched from. Drives post-run cleanup: Telegram
+    # searches purge Lead rows after delivery to keep storage tight, web
+    # searches keep them so the CRM can show them.
+    source: Mapped[str] = mapped_column(
+        String(16), default="telegram", nullable=False, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -161,6 +167,19 @@ class Lead(Base):
     website_meta: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
     social_links: Mapped[dict[str, str] | None] = mapped_column(_JSONB())
     reviews_summary: Mapped[str | None] = mapped_column(Text)
+
+    # CRM state — populated only when the lead is viewed/worked in the web UI.
+    # Kept on the Lead row rather than a separate events table to keep the
+    # CRM page reading from a single query; move to an event log once history
+    # becomes a product feature.
+    lead_status: Mapped[str] = mapped_column(
+        String(16), default="new", nullable=False, index=True
+    )
+    owner_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+    last_touched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False

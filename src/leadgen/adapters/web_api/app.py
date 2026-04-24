@@ -4,6 +4,12 @@ Swaps in place of the old aiohttp ``/health`` + ``/metrics`` server.
 Same port (``PORT`` env), same paths, plus the new ``/api/v1/*``
 routes. Uvicorn runs this app alongside the Telegram bot polling
 loop in the same asyncio event loop.
+
+Auth note: the public demo runs **without** an API key gate on
+read/write endpoints. ``WEB_API_KEY`` still gates the SSE progress
+stream (since that's the only endpoint where the client can't
+retry). Re-introduce ``require_api_key`` on the REST handlers once
+real user auth lands.
 """
 
 from __future__ import annotations
@@ -13,34 +19,55 @@ import json
 import logging
 import os
 import uuid
+from datetime import datetime, timezone
+from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy import text as sa_text
 
-from leadgen.adapters.web_api.auth import require_api_key
 from leadgen.adapters.web_api.schemas import (
+    WEB_DEMO_USER_ID,
+    DashboardStats,
     HealthResponse,
+    LeadListResponse,
+    LeadResponse,
+    LeadUpdate,
     SearchCreate,
     SearchCreateResponse,
     SearchSummary,
+    TeamMemberResponse,
 )
+from leadgen.adapters.web_api.sinks import WebDeliverySink
 from leadgen.config import get_settings
 from leadgen.core.services import BillingService, default_broker
-from leadgen.db.models import SearchQuery
+from leadgen.core.services.progress_broker import BrokerProgressSink
+from leadgen.db.models import Lead, SearchQuery, Team, TeamMembership, User
 from leadgen.db.session import _get_engine, session_factory
+from leadgen.pipeline.search import run_search_with_sinks
 from leadgen.queue import enqueue_search, is_queue_enabled
 
 logger = logging.getLogger(__name__)
 
 
+# Demo avatars for team page until seat management is wired up.
+_DEMO_TEAM_COLORS = [
+    "#3D5AFE",
+    "#F59E0B",
+    "#16A34A",
+    "#EC4899",
+    "#8B5CF6",
+    "#06B6D4",
+]
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Leadgen API",
-        version="0.2.0",
+        version="0.3.0",
         docs_url="/docs",
         redoc_url=None,
     )
@@ -86,17 +113,15 @@ def create_app() -> FastAPI:
 
     # ── /api/v1/searches ───────────────────────────────────────────────
 
-    @app.post(
-        "/api/v1/searches",
-        response_model=SearchCreateResponse,
-        dependencies=[Depends(require_api_key)],
-    )
+    @app.post("/api/v1/searches", response_model=SearchCreateResponse)
     async def create_search(body: SearchCreate) -> SearchCreateResponse:
-        """Create a SearchQuery row + optionally enqueue on arq.
+        """Create a SearchQuery row + launch the pipeline.
 
-        Uses the same BillingService the bot uses, so the web path and
-        the Telegram path share one quota bucket and one unique-index
-        guard against parallel in-flight searches.
+        Execution path:
+        1. Redis configured → enqueue on arq (worker does the heavy lifting).
+        2. Redis NOT configured → spawn ``asyncio.create_task`` in this
+           process. Runs fine for single-container Railway deployments with
+           modest traffic; for production volume enable the queue.
         """
         async with session_factory() as session:
             billing = BillingService(session)
@@ -109,7 +134,10 @@ def create_app() -> FastAPI:
                     ),
                 )
             query = SearchQuery(
-                user_id=body.user_id, niche=body.niche, region=body.region
+                user_id=body.user_id,
+                niche=body.niche,
+                region=body.region,
+                source="web",
             )
             session.add(query)
             try:
@@ -125,20 +153,34 @@ def create_app() -> FastAPI:
                 ) from exc
             await session.refresh(query)
 
+        user_profile: dict[str, Any] = {}
+        if body.language_code:
+            user_profile["language_code"] = body.language_code
+        if body.profession:
+            user_profile["profession"] = body.profession
+
         queued_id = await enqueue_search(
             query.id,
             chat_id=None,
-            user_profile={"language_code": body.language_code} if body.language_code else None,
+            user_profile=user_profile or None,
         )
-        return SearchCreateResponse(id=query.id, queued=bool(queued_id))
+        queued = bool(queued_id)
 
-    @app.get(
-        "/api/v1/searches",
-        response_model=list[SearchSummary],
-        dependencies=[Depends(require_api_key)],
-    )
-    async def list_searches(user_id: int, limit: int = 20) -> list[SearchSummary]:
-        limit = max(1, min(limit, 100))
+        if not queued:
+            # No Redis → run inline. Fire-and-forget; progress is streamed
+            # over the broker, so the HTTP response can return immediately.
+            asyncio.create_task(
+                _run_web_search_inline(query.id, user_profile or None),
+                name=f"leadgen-web-search-{query.id}",
+            )
+
+        return SearchCreateResponse(id=query.id, queued=queued)
+
+    @app.get("/api/v1/searches", response_model=list[SearchSummary])
+    async def list_searches(
+        user_id: int = WEB_DEMO_USER_ID, limit: int = 50
+    ) -> list[SearchSummary]:
+        limit = max(1, min(limit, 200))
         async with session_factory() as session:
             result = await session.execute(
                 select(SearchQuery)
@@ -148,11 +190,7 @@ def create_app() -> FastAPI:
             )
             return [_to_summary(row) for row in result.scalars().all()]
 
-    @app.get(
-        "/api/v1/searches/{search_id}",
-        response_model=SearchSummary,
-        dependencies=[Depends(require_api_key)],
-    )
+    @app.get("/api/v1/searches/{search_id}", response_model=SearchSummary)
     async def get_search(search_id: uuid.UUID) -> SearchSummary:
         async with session_factory() as session:
             query = await session.get(SearchQuery, search_id)
@@ -161,6 +199,180 @@ def create_app() -> FastAPI:
                     status_code=status.HTTP_404_NOT_FOUND, detail="search not found"
                 )
             return _to_summary(query)
+
+    @app.get(
+        "/api/v1/searches/{search_id}/leads", response_model=list[LeadResponse]
+    )
+    async def list_search_leads(
+        search_id: uuid.UUID,
+        temp: str | None = None,
+    ) -> list[LeadResponse]:
+        """All leads for one search. Optional ?temp=hot|warm|cold filter
+        (computed from score_ai, not a DB column, so it happens in Python)."""
+        async with session_factory() as session:
+            result = await session.execute(
+                select(Lead)
+                .where(Lead.query_id == search_id)
+                .order_by(Lead.score_ai.desc().nullslast(), Lead.rating.desc().nullslast())
+            )
+            leads = list(result.scalars().all())
+
+        if temp in {"hot", "warm", "cold"}:
+            leads = [lead for lead in leads if _temp(lead.score_ai) == temp]
+        return [LeadResponse.model_validate(lead) for lead in leads]
+
+    @app.get("/api/v1/leads", response_model=LeadListResponse)
+    async def list_all_leads(
+        user_id: int = WEB_DEMO_USER_ID,
+        lead_status: str | None = None,
+        limit: int = 200,
+    ) -> LeadListResponse:
+        """Cross-session CRM listing. Joins on SearchQuery to scope to the
+        caller and returns a lightweight session_id → {niche, region} map so
+        the UI can show each row's parent session without a second hop."""
+        limit = max(1, min(limit, 500))
+        async with session_factory() as session:
+            stmt = (
+                select(Lead, SearchQuery.niche, SearchQuery.region)
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.user_id == user_id)
+                .where(SearchQuery.source == "web")
+                .order_by(Lead.score_ai.desc().nullslast(), Lead.created_at.desc())
+                .limit(limit)
+            )
+            if lead_status:
+                stmt = stmt.where(Lead.lead_status == lead_status)
+            rows = (await session.execute(stmt)).all()
+
+            total_stmt = (
+                select(func.count(Lead.id))
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.user_id == user_id)
+                .where(SearchQuery.source == "web")
+            )
+            total = int((await session.execute(total_stmt)).scalar() or 0)
+
+        leads: list[LeadResponse] = []
+        sessions_by_id: dict[str, dict[str, Any]] = {}
+        for lead, niche, region in rows:
+            leads.append(LeadResponse.model_validate(lead))
+            sessions_by_id[str(lead.query_id)] = {"niche": niche, "region": region}
+        return LeadListResponse(leads=leads, total=total, sessions_by_id=sessions_by_id)
+
+    @app.patch("/api/v1/leads/{lead_id}", response_model=LeadResponse)
+    async def update_lead(lead_id: uuid.UUID, body: LeadUpdate) -> LeadResponse:
+        """Partial update: status, owner, notes. Touches last_touched_at."""
+        changes: dict[str, Any] = {}
+        if body.lead_status is not None:
+            if body.lead_status not in {"new", "contacted", "replied", "won", "archived"}:
+                raise HTTPException(
+                    status_code=400,
+                    detail="lead_status must be one of new/contacted/replied/won/archived",
+                )
+            changes["lead_status"] = body.lead_status
+        if body.owner_user_id is not None or "owner_user_id" in body.model_fields_set:
+            changes["owner_user_id"] = body.owner_user_id
+        if body.notes is not None:
+            changes["notes"] = body.notes
+        if not changes:
+            raise HTTPException(status_code=400, detail="no fields to update")
+        changes["last_touched_at"] = datetime.now(timezone.utc)
+
+        async with session_factory() as session:
+            await session.execute(
+                update(Lead).where(Lead.id == lead_id).values(**changes)
+            )
+            await session.commit()
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise HTTPException(status_code=404, detail="lead not found")
+            return LeadResponse.model_validate(lead)
+
+    @app.get("/api/v1/stats", response_model=DashboardStats)
+    async def dashboard_stats(user_id: int = WEB_DEMO_USER_ID) -> DashboardStats:
+        async with session_factory() as session:
+            # Searches — only count the web-owned ones (Telegram searches
+            # have no leads left after cleanup anyway).
+            query_stmt = (
+                select(SearchQuery)
+                .where(SearchQuery.user_id == user_id)
+                .where(SearchQuery.source == "web")
+            )
+            searches = list((await session.execute(query_stmt)).scalars().all())
+
+            # Leads across all done searches.
+            lead_stmt = (
+                select(Lead.score_ai)
+                .join(SearchQuery, SearchQuery.id == Lead.query_id)
+                .where(SearchQuery.user_id == user_id)
+                .where(SearchQuery.source == "web")
+            )
+            scores = [row[0] for row in (await session.execute(lead_stmt)).all()]
+
+        hot = sum(1 for s in scores if s is not None and s >= 75)
+        warm = sum(1 for s in scores if s is not None and 50 <= s < 75)
+        cold = sum(1 for s in scores if s is not None and s < 50)
+        running = sum(1 for s in searches if s.status == "running")
+
+        return DashboardStats(
+            sessions_total=len(searches),
+            sessions_running=running,
+            leads_total=len(scores),
+            hot_total=hot,
+            warm_total=warm,
+            cold_total=cold,
+        )
+
+    @app.get("/api/v1/team", response_model=list[TeamMemberResponse])
+    async def list_team_members() -> list[TeamMemberResponse]:
+        """Whatever teammates exist in the Team / TeamMembership tables.
+        Falls back to a demo roster until seat management ships so the
+        /app/team page always has something to render."""
+        async with session_factory() as session:
+            stmt = (
+                select(TeamMembership, User, Team)
+                .join(User, User.id == TeamMembership.user_id)
+                .join(Team, Team.id == TeamMembership.team_id)
+                .where(User.id != WEB_DEMO_USER_ID)
+                .order_by(User.first_name)
+            )
+            rows = (await session.execute(stmt)).all()
+
+        if rows:
+            members: list[TeamMemberResponse] = []
+            for i, (_, user, _team) in enumerate(rows):
+                display = user.display_name or user.first_name or f"User {user.id}"
+                members.append(
+                    TeamMemberResponse(
+                        id=user.id,
+                        name=display,
+                        role=user.profession or "Member",
+                        initials=display[:1].upper(),
+                        color=_DEMO_TEAM_COLORS[i % len(_DEMO_TEAM_COLORS)],
+                        email=user.username and f"{user.username}@leadgen.app",
+                    )
+                )
+            return members
+
+        # Demo roster — same names as the prototype so the UI matches docs.
+        demo = [
+            ("Denys", "Founder"),
+            ("Alina", "SDR"),
+            ("Max", "Marketing Lead"),
+            ("Kira", "Copywriter"),
+        ]
+        return [
+            TeamMemberResponse(
+                id=i + 1,
+                name=n,
+                role=r,
+                initials=n[:1],
+                color=_DEMO_TEAM_COLORS[i % len(_DEMO_TEAM_COLORS)],
+                email=f"{n.lower()}@leadgen.app",
+                last_active="2 hours ago",
+            )
+            for i, (n, r) in enumerate(demo)
+        ]
 
     @app.get("/api/v1/queue/status", include_in_schema=False)
     async def queue_status() -> dict[str, bool]:
@@ -173,27 +385,21 @@ def create_app() -> FastAPI:
         search_id: uuid.UUID,
         api_key: str | None = Query(default=None, alias="api_key"),
     ) -> StreamingResponse:
-        """Server-Sent Events stream of progress beats for a running search.
+        """Server-Sent Events stream of progress beats.
 
-        Auth is via ``?api_key=...`` in the query string rather than a
-        header — ``EventSource`` in browsers can't set custom headers,
-        so this is the pragmatic way to gate the stream. The key is
-        never logged (FastAPI's default access log is off) and each
-        connection is short-lived.
+        Auth: if WEB_API_KEY is configured, require it as ``?api_key=``.
+        Otherwise (open-demo mode), stream unauthenticated — connections
+        are short-lived and the broker auto-closes on search completion.
         """
         expected = get_settings().web_api_key
-        if not expected:
-            raise HTTPException(status_code=503, detail="web api key not configured")
-        if api_key != expected:
+        if expected and api_key != expected:
             raise HTTPException(status_code=401, detail="invalid api_key")
 
         async def event_stream() -> asyncio.AsyncIterator[bytes]:
-            # Reconnect-friendly: client will retry after 5s if stream drops.
             yield b"retry: 5000\n\n"
             async for event in default_broker.subscribe(search_id):
                 payload = json.dumps({"kind": event.kind, **event.data})
                 yield f"event: {event.kind}\ndata: {payload}\n\n".encode()
-            # Sentinel: tells EventSource we're done, no reconnect needed.
             yield b"event: done\ndata: {}\n\n"
 
         return StreamingResponse(
@@ -209,6 +415,30 @@ def create_app() -> FastAPI:
     return app
 
 
+async def _run_web_search_inline(
+    query_id: uuid.UUID, user_profile: dict[str, Any] | None
+) -> None:
+    """Fallback in-process runner when no Redis worker is available.
+
+    Wraps ``run_search_with_sinks`` with a WebDeliverySink + a
+    BrokerProgressSink so the SSE endpoint has something to stream.
+    Any exception is swallowed here — the pipeline itself marks the
+    SearchQuery as failed, and a crash in this task shouldn't take
+    down the API server.
+    """
+    try:
+        progress = BrokerProgressSink(default_broker, query_id)
+        delivery = WebDeliverySink(query_id)
+        await run_search_with_sinks(
+            query_id=query_id,
+            progress=progress,
+            delivery=delivery,
+            user_profile=user_profile,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("inline web search crashed for %s", query_id)
+
+
 def _to_summary(query: SearchQuery) -> SearchSummary:
     return SearchSummary(
         id=query.id,
@@ -216,6 +446,7 @@ def _to_summary(query: SearchQuery) -> SearchSummary:
         niche=query.niche,
         region=query.region,
         status=query.status,
+        source=query.source,
         created_at=query.created_at,
         finished_at=query.finished_at,
         leads_count=query.leads_count,
@@ -223,3 +454,14 @@ def _to_summary(query: SearchQuery) -> SearchSummary:
         hot_leads_count=query.hot_leads_count,
         error=query.error,
     )
+
+
+def _temp(score: float | None) -> str:
+    """Bucket a 0–100 AI score into prototype temperature tiers."""
+    if score is None:
+        return "cold"
+    if score >= 75:
+        return "hot"
+    if score >= 50:
+        return "warm"
+    return "cold"

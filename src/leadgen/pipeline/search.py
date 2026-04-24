@@ -114,7 +114,11 @@ async def run_search(
                 "Попробуй запустить снова через минуту или проверь /diag.",
             )
     finally:
-        await _cleanup_leads(query_id)
+        # Only Telegram-origin searches purge their Lead rows on exit. Web
+        # searches keep them so /api/v1/searches/{id}/leads can serve the
+        # CRM. Telegram is the default, so old rows keep the same behavior.
+        if await _search_source(query_id) != "web":
+            await _cleanup_leads(query_id)
 
 
 # ── Client-agnostic pipeline ───────────────────────────────────────────────
@@ -430,3 +434,19 @@ async def _cleanup_leads(query_id: uuid.UUID) -> None:
         logger.info("cleanup: deleted leads for query %s", query_id)
     except Exception:  # noqa: BLE001
         logger.exception("cleanup: failed to delete leads for query %s", query_id)
+
+
+async def _search_source(query_id: uuid.UUID) -> str:
+    """Read SearchQuery.source ("telegram" | "web"). Defaults to telegram
+    on any lookup error so a failure here never accidentally KEEPS leads
+    for a Telegram-origin search (unexpected DB bloat is worse than
+    missing CRM history in a one-off edge case)."""
+    try:
+        async with session_factory() as session:
+            query = await session.get(SearchQuery, query_id)
+            if query is None:
+                return "telegram"
+            return query.source or "telegram"
+    except Exception:  # noqa: BLE001
+        logger.exception("_search_source: lookup failed for %s", query_id)
+        return "telegram"

@@ -41,16 +41,6 @@ def test_health_returns_shape(client: TestClient) -> None:
     assert "commit" in body
 
 
-def test_create_search_without_api_key_is_rejected(client: TestClient) -> None:
-    resp = client.post(
-        "/api/v1/searches",
-        json={"user_id": 1, "niche": "roofing", "region": "NYC"},
-    )
-    # Either 401 (key configured but missing from request) or 503 (key not
-    # configured on the server). Both are correct "reject the write" outcomes.
-    assert resp.status_code in (401, 503)
-
-
 def test_queue_status_reports_bool(client: TestClient) -> None:
     resp = client.get("/api/v1/queue/status")
     assert resp.status_code == 200
