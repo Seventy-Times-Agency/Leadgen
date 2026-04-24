@@ -54,11 +54,11 @@ export default function HomePage() {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Link href="/prototype/index.html" className="btn btn-ghost btn-sm">
-              Open prototype
+            <Link href="/app" className="btn btn-ghost btn-sm">
+              Open workspace
             </Link>
-            <Link href="/prototype/index.html#/register" className="btn btn-sm">
-              Request access
+            <Link href="/app/search" className="btn btn-sm">
+              Run a search
             </Link>
           </div>
         </div>
@@ -151,7 +151,7 @@ export default function HomePage() {
               }}
             />
             <Link
-              href="/prototype/index.html#/register"
+              href="/app/search"
               className="btn btn-lg"
               style={{ justifyContent: "center" }}
             >
@@ -313,10 +313,10 @@ export default function HomePage() {
             </span>
           </h2>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 36 }}>
-            <Link href="/prototype/index.html#/register" className="btn btn-lg">
-              Request team access <Icon name="arrow" size={16} />
+            <Link href="/app/search" className="btn btn-lg">
+              Run your first search <Icon name="arrow" size={16} />
             </Link>
-            <Link href="/prototype/index.html" className="btn btn-ghost btn-lg">
+            <Link href="/prototype" className="btn btn-ghost btn-lg">
               Explore the prototype
             </Link>
           </div>
