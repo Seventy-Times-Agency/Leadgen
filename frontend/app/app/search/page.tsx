@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
-import { DEMO_USER } from "@/lib/demoUser";
 import { createSearch } from "@/lib/api";
 import { useProgress } from "@/lib/useProgress";
+import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 type Phase = "compose" | "running" | "done";
 
@@ -15,25 +15,32 @@ interface ChatMsg {
   text: string;
 }
 
-const GREETING =
-  "Hi — I'm Lumen, your Leadgen copilot. Tell me who you're looking for and I'll build you a list in ~90 seconds.";
-const QUICK_PROMPTS = [
-  "Roofing contractors in New York",
-  "Coffee shops in Astana",
-  "Interior designers in Berlin",
-  "Orthodontic clinics in London",
+const QUICK_PROMPT_KEYS: TranslationKey[] = [
+  "search.prompts.0",
+  "search.prompts.1",
+  "search.prompts.2",
+  "search.prompts.3",
 ];
 
 export default function NewSearchPage() {
-  const router = useRouter();
-  const [phase, setPhase] = useState<Phase>("compose");
-  const [niche, setNiche] = useState("");
-  const [region, setRegion] = useState("");
-  const [profession, setProfession] = useState(
-    "web design & dev for small businesses",
+  return (
+    <Suspense>
+      <NewSearchInner />
+    </Suspense>
   );
+}
+
+function NewSearchInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { t } = useLocale();
+
+  const [phase, setPhase] = useState<Phase>("compose");
+  const [niche, setNiche] = useState(searchParams.get("niche") ?? "");
+  const [region, setRegion] = useState(searchParams.get("region") ?? "");
+  const [profession, setProfession] = useState("");
   const [messages, setMessages] = useState<ChatMsg[]>([
-    { role: "bot", text: GREETING },
+    { role: "bot", text: t("search.chat.greeting") },
   ]);
   const [draft, setDraft] = useState("");
   const [searchId, setSearchId] = useState<string | null>(null);
@@ -46,22 +53,17 @@ export default function NewSearchPage() {
     }
   }, [messages]);
 
-  const parseNicheRegion = (
-    text: string,
-  ): { niche: string; region: string } | null => {
-    const m = text.match(/(.+?)\s+(?:in|at|around|near)\s+(.+)/i);
+  const parseNicheRegion = (text: string) => {
+    const m = text.match(/(.+?)\s+(?:in|at|around|near|в)\s+(.+)/i);
     if (m) return { niche: m[1].trim(), region: m[2].trim() };
     const parts = text.split(/,\s*/);
-    if (parts.length === 2) {
-      return { niche: parts[0].trim(), region: parts[1].trim() };
-    }
+    if (parts.length === 2) return { niche: parts[0].trim(), region: parts[1].trim() };
     return null;
   };
 
   const handleMessage = (text: string) => {
     if (!text.trim()) return;
-    const next = [...messages, { role: "user" as const, text }];
-    setMessages(next);
+    setMessages((m) => [...m, { role: "user", text }]);
     setDraft("");
     const parsed = parseNicheRegion(text);
     if (parsed) {
@@ -71,16 +73,13 @@ export default function NewSearchPage() {
         ...m,
         {
           role: "bot",
-          text: `Got it — **${parsed.niche}** in **${parsed.region}**. Click Launch when ready, or tweak the form on the right.`,
+          text: t("search.chat.gotIt", { niche: parsed.niche, region: parsed.region }),
         },
       ]);
     } else {
       setMessages((m) => [
         ...m,
-        {
-          role: "bot",
-          text: 'Tell me the niche and the region, e.g. "roofing companies in New York".',
-        },
+        { role: "bot", text: t("search.chat.needBoth") },
       ]);
     }
   };
@@ -106,8 +105,8 @@ export default function NewSearchPage() {
       <>
         <Topbar
           crumbs={[
-            { label: "Workspace", href: "/app" },
-            { label: "New search" },
+            { label: t("search.crumb.workspace"), href: "/app" },
+            { label: t("search.crumb.new") },
           ]}
           right={
             <button
@@ -115,7 +114,7 @@ export default function NewSearchPage() {
               onClick={() => router.push("/app")}
               type="button"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
           }
         />
@@ -167,7 +166,7 @@ export default function NewSearchPage() {
                     className="status-dot live"
                     style={{ marginRight: 6, width: 6, height: 6 }}
                   />
-                  Your search copilot
+                  AI copilot
                 </div>
               </div>
             </div>
@@ -192,19 +191,19 @@ export default function NewSearchPage() {
                     className="eyebrow"
                     style={{ marginBottom: 10, fontSize: 10 }}
                   >
-                    Try one of these
+                    {t("search.chat.tryThese")}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {QUICK_PROMPTS.map((p) => (
+                    {QUICK_PROMPT_KEYS.map((k) => (
                       <button
-                        key={p}
+                        key={k}
                         type="button"
                         className="btn btn-ghost btn-sm"
-                        onClick={() => handleMessage(p)}
+                        onClick={() => handleMessage(t(k))}
                         style={{ justifyContent: "flex-start" }}
                       >
                         <Icon name="arrow" size={13} />
-                        {p}
+                        {t(k)}
                       </button>
                     ))}
                   </div>
@@ -227,7 +226,7 @@ export default function NewSearchPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleMessage(draft);
                 }}
-                placeholder="Describe who you're looking for…"
+                placeholder={t("search.chat.placeholder")}
               />
               <button
                 type="button"
@@ -245,10 +244,9 @@ export default function NewSearchPage() {
             </div>
           </div>
 
-          {/* Right — structured form */}
           <div>
             <div className="eyebrow" style={{ marginBottom: 6 }}>
-              Search parameters
+              {t("search.form.eyebrow")}
             </div>
             <div
               style={{
@@ -258,7 +256,7 @@ export default function NewSearchPage() {
                 marginBottom: 4,
               }}
             >
-              Or set it manually
+              {t("search.form.title")}
             </div>
             <div
               style={{
@@ -267,33 +265,33 @@ export default function NewSearchPage() {
                 marginBottom: 24,
               }}
             >
-              Lumen auto-fills these as you chat.
+              {t("search.form.subtitle")}
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <FormField label="Niche">
+              <FormField label={t("search.form.niche")}>
                 <input
                   className="input"
                   value={niche}
                   onChange={(e) => setNiche(e.target.value)}
-                  placeholder="roofing companies"
+                  placeholder={t("search.form.nichePh")}
                 />
               </FormField>
-              <FormField label="Region">
+              <FormField label={t("search.form.region")}>
                 <input
                   className="input"
                   value={region}
                   onChange={(e) => setRegion(e.target.value)}
-                  placeholder="New York, NY"
+                  placeholder={t("search.form.regionPh")}
                 />
               </FormField>
-              <FormField label="Your offer (for AI scoring)">
+              <FormField label={t("search.form.offer")}>
                 <textarea
                   className="textarea"
                   value={profession}
                   onChange={(e) => setProfession(e.target.value)}
                   rows={3}
-                  placeholder="e.g. I build SEO-optimized websites for local contractors"
+                  placeholder={t("search.form.offerPh")}
                 />
                 <div
                   style={{
@@ -302,7 +300,7 @@ export default function NewSearchPage() {
                     marginTop: 6,
                   }}
                 >
-                  Claude uses this to personalize every score and pitch.
+                  {t("search.form.offerHint")}
                 </div>
               </FormField>
 
@@ -325,7 +323,7 @@ export default function NewSearchPage() {
                     flex: 1,
                   }}
                 >
-                  Up to 50 leads · 60–120 seconds · live progress below.
+                  {t("search.form.meta")}
                 </div>
               </div>
 
@@ -346,7 +344,7 @@ export default function NewSearchPage() {
                   opacity: !niche || !region ? 0.5 : 1,
                 }}
               >
-                <Icon name="sparkles" size={16} /> Launch search
+                <Icon name="sparkles" size={16} /> {t("search.form.launch")}
               </button>
             </div>
           </div>
@@ -356,7 +354,14 @@ export default function NewSearchPage() {
   }
 
   if (phase === "running" && searchId) {
-    return <RunningView searchId={searchId} niche={niche} region={region} onDone={() => setPhase("done")} />;
+    return (
+      <RunningView
+        searchId={searchId}
+        niche={niche}
+        region={region}
+        onDone={() => setPhase("done")}
+      />
+    );
   }
 
   return <DoneView searchId={searchId!} niche={niche} region={region} />;
@@ -390,8 +395,11 @@ function ChatBubble({ msg }: { msg: ChatMsg }) {
           <Icon name="sparkles" size={13} />
         </div>
       ) : (
-        <div className="avatar avatar-sm" style={{ background: DEMO_USER.color }}>
-          {DEMO_USER.initials}
+        <div
+          className="avatar avatar-sm"
+          style={{ background: "var(--accent)" }}
+        >
+          ·
         </div>
       )}
       <div
@@ -452,14 +460,14 @@ function RunningView({
   region: string;
   onDone: () => void;
 }) {
+  const { t } = useLocale();
   const progress = useProgress(searchId);
   const router = useRouter();
 
   useEffect(() => {
     if (progress.closed) {
-      // Short grace period so the final phase render is visible.
-      const t = setTimeout(onDone, 800);
-      return () => clearTimeout(t);
+      const timer = setTimeout(onDone, 800);
+      return () => clearTimeout(timer);
     }
   }, [progress.closed, onDone]);
 
@@ -474,8 +482,8 @@ function RunningView({
     <>
       <Topbar
         crumbs={[
-          { label: "Workspace", href: "/app" },
-          { label: "Search in progress" },
+          { label: t("search.crumb.workspace"), href: "/app" },
+          { label: t("search.crumb.running") },
         ]}
       />
       <div className="page" style={{ maxWidth: 900 }}>
@@ -491,7 +499,9 @@ function RunningView({
           <div style={{ position: "relative" }}>
             <div className="eyebrow" style={{ marginBottom: 14 }}>
               <span className="status-dot live" style={{ marginRight: 8 }} />
-              {progress.closed ? "Complete" : "Searching"}
+              {progress.closed
+                ? t("search.running.eyebrowDone")
+                : t("search.running.eyebrowSearching")}
             </div>
             <div
               style={{
@@ -505,7 +515,7 @@ function RunningView({
             >
               {niche}{" "}
               <span style={{ fontStyle: "italic", fontWeight: 400, color: "var(--text-muted)" }}>
-                in
+                {t("search.running.inGlue")}
               </span>{" "}
               {region}
             </div>
@@ -516,7 +526,7 @@ function RunningView({
                 marginBottom: 32,
               }}
             >
-              {progress.phaseSubtitle || "This usually takes 60–120 seconds. Stay on the page — you'll see lead cards appear as they're scored."}
+              {progress.phaseSubtitle || t("search.running.defaultSubtitle")}
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 40, alignItems: "center" }}>
@@ -530,7 +540,7 @@ function RunningView({
                 }}
               >
                 <div className="eyebrow" style={{ marginBottom: 8 }}>
-                  Current phase
+                  {t("search.running.phaseEyebrow")}
                 </div>
                 <div
                   style={{
@@ -539,7 +549,7 @@ function RunningView({
                     marginBottom: 6,
                   }}
                   dangerouslySetInnerHTML={{
-                    __html: progress.phaseTitle || "Booting the pipeline…",
+                    __html: progress.phaseTitle || t("search.running.bootingPipeline"),
                   }}
                 />
                 <div
@@ -587,7 +597,7 @@ function RunningView({
                   className="btn btn-ghost btn-sm"
                   onClick={() => router.push(`/app/sessions/${searchId}`)}
                 >
-                  Open session anyway
+                  {t("search.running.openAnyway")}
                 </button>
               </div>
             )}
@@ -674,13 +684,14 @@ function DoneView({
   niche: string;
   region: string;
 }) {
+  const { t } = useLocale();
   const router = useRouter();
   return (
     <>
       <Topbar
         crumbs={[
-          { label: "Workspace", href: "/app" },
-          { label: "Search complete" },
+          { label: t("search.crumb.workspace"), href: "/app" },
+          { label: t("search.crumb.done") },
         ]}
       />
       <div className="page" style={{ maxWidth: 900 }}>
@@ -717,7 +728,7 @@ function DoneView({
                 marginBottom: 12,
               }}
             >
-              {niche} · {region} — ready.
+              {t("search.done.title", { niche, region })}
             </div>
             <div
               style={{
@@ -726,7 +737,7 @@ function DoneView({
                 marginBottom: 32,
               }}
             >
-              Each lead was scored against your profile with a custom pitch.
+              {t("search.done.subtitle")}
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
               <button
@@ -734,7 +745,7 @@ function DoneView({
                 className="btn btn-lg"
                 onClick={() => router.push(`/app/sessions/${searchId}`)}
               >
-                Open results <Icon name="arrow" size={15} />
+                {t("search.done.open")} <Icon name="arrow" size={15} />
               </button>
             </div>
           </div>
