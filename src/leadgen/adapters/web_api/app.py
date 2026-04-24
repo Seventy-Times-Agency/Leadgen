@@ -440,6 +440,11 @@ async def _run_web_search_inline(
 
 
 def _to_summary(query: SearchQuery) -> SearchSummary:
+    insights: str | None = None
+    if isinstance(query.analysis_summary, dict):
+        raw = query.analysis_summary.get("insights")
+        if isinstance(raw, str):
+            insights = raw
     return SearchSummary(
         id=query.id,
         user_id=query.user_id,
@@ -453,6 +458,7 @@ def _to_summary(query: SearchQuery) -> SearchSummary:
         avg_score=query.avg_score,
         hot_leads_count=query.hot_leads_count,
         error=query.error,
+        insights=insights,
     )
 
 

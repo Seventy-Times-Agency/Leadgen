@@ -190,16 +190,26 @@ async def run_search_with_sinks(
             searches_total.labels(status="no_results").inc()
             return
 
-        # 2. Persist + cross-run dedup
+        # 2. Persist + cross-run dedup.
+        # The synthetic web-demo user (id=0) is shared by every visitor of
+        # the open demo. If we deduped against its seen-leads history the
+        # second visitor to search "roofing NYC" would get zero results —
+        # every company is already "seen" by somebody's prior run. Skip
+        # the dedup memory for user_id=0; real users keep the cross-run
+        # dedup that the Telegram flow relies on.
+        skip_dedup = user_id == 0
         async with session_factory() as session:
             incoming_source_ids = [r.source_id for r in raw_leads if r.source_id]
-            seen_rows = await session.execute(
-                select(UserSeenLead.source_id)
-                .where(UserSeenLead.user_id == user_id)
-                .where(UserSeenLead.source == "google_places")
-                .where(UserSeenLead.source_id.in_(incoming_source_ids))
-            )
-            already_seen: set[str] = {row[0] for row in seen_rows.all()}
+            if skip_dedup:
+                already_seen: set[str] = set()
+            else:
+                seen_rows = await session.execute(
+                    select(UserSeenLead.source_id)
+                    .where(UserSeenLead.user_id == user_id)
+                    .where(UserSeenLead.source == "google_places")
+                    .where(UserSeenLead.source_id.in_(incoming_source_ids))
+                )
+                already_seen = {row[0] for row in seen_rows.all()}
 
             batch_seen: set[str] = set()
             rows: list[Lead] = []
@@ -264,7 +274,7 @@ async def run_search_with_sinks(
                 return
 
             session.add_all(rows)
-            if seen_to_insert:
+            if seen_to_insert and not skip_dedup:
                 from sqlalchemy.dialects.postgresql import insert as pg_insert
                 stmt = pg_insert(UserSeenLead).values(seen_to_insert)
                 stmt = stmt.on_conflict_do_nothing(

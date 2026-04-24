@@ -49,7 +49,7 @@ class WebDeliverySink:
             self.search_id,
             niche,
             region,
-            getattr(stats, "total_leads", "?"),
+            getattr(stats, "total", "?"),
         )
         self.any_delivered = True
 

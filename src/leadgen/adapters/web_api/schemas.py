@@ -55,6 +55,11 @@ class SearchSummary(BaseModel):
     avg_score: float | None
     hot_leads_count: int | None
     error: str | None
+    insights: str | None = Field(
+        default=None,
+        description="High-level Claude summary for this search, pulled from "
+        "analysis_summary['insights']. None until the run completes.",
+    )
 
 
 class SearchCreateResponse(BaseModel):
