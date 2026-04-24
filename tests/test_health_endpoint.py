@@ -41,14 +41,40 @@ def test_health_returns_shape(client: TestClient) -> None:
     assert "commit" in body
 
 
-def test_create_search_without_api_key_is_rejected(client: TestClient) -> None:
-    resp = client.post(
-        "/api/v1/searches",
-        json={"user_id": 1, "niche": "roofing", "region": "NYC"},
-    )
-    # Either 401 (key configured but missing from request) or 503 (key not
-    # configured on the server). Both are correct "reject the write" outcomes.
-    assert resp.status_code in (401, 503)
+@pytest.mark.asyncio
+async def test_require_api_key_open_mode_accepts_missing_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With WEB_API_KEY empty, the auth dependency is a no-op."""
+    from leadgen.adapters.web_api import auth as auth_module
+    from leadgen.config import get_settings
+
+    monkeypatch.delenv("WEB_API_KEY", raising=False)
+    get_settings.cache_clear()
+    monkeypatch.setattr(auth_module, "_open_mode_warned", True, raising=False)
+
+    # Should return without raising — missing header is fine in open mode.
+    await auth_module.require_api_key(x_api_key=None)
+    assert auth_module.is_open_mode() is True
+
+
+def test_create_search_rejects_bad_key_when_configured(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from leadgen.config import get_settings
+
+    monkeypatch.setenv("WEB_API_KEY", "secret-test-key")
+    get_settings.cache_clear()
+    try:
+        resp = client.post(
+            "/api/v1/searches",
+            headers={"X-API-Key": "wrong-key"},
+            json={"user_id": 1, "niche": "roofing", "region": "NYC"},
+        )
+        assert resp.status_code == 401
+    finally:
+        monkeypatch.delenv("WEB_API_KEY", raising=False)
+        get_settings.cache_clear()
 
 
 def test_queue_status_reports_bool(client: TestClient) -> None:
@@ -57,3 +83,11 @@ def test_queue_status_reports_bool(client: TestClient) -> None:
     body = resp.json()
     assert "queue_enabled" in body
     assert isinstance(body["queue_enabled"], bool)
+
+
+def test_config_reports_open_mode(client: TestClient) -> None:
+    resp = client.get("/api/v1/config")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "open_mode" in body
+    assert isinstance(body["open_mode"], bool)

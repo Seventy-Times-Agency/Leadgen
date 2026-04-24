@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 import {
   type ApiError,
@@ -23,12 +23,13 @@ interface ProgressLine {
   ts: number;
 }
 
-export default function NewSearchPage() {
+function NewSearchInner() {
   const router = useRouter();
+  const params = useSearchParams();
   const [creds, setCreds] = useState<AuthCreds | null>(null);
 
-  const [niche, setNiche] = useState("");
-  const [region, setRegion] = useState("");
+  const [niche, setNiche] = useState(params?.get("niche") ?? "");
+  const [region, setRegion] = useState(params?.get("region") ?? "");
   const [language, setLanguage] = useState("en");
 
   const [phase, setPhase] = useState<Phase>("compose");
@@ -354,4 +355,16 @@ function ProgressItem({ line }: { line: ProgressLine }) {
  */
 function stripHtmlTags(s: string): string {
   return s.replace(/<\/?[^>]+>/g, "");
+}
+
+export default function NewSearchPage() {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</div>
+      }
+    >
+      <NewSearchInner />
+    </Suspense>
+  );
 }

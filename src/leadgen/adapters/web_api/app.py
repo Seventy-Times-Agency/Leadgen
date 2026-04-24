@@ -23,7 +23,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 from sqlalchemy import select, update
 from sqlalchemy import text as sa_text
 
-from leadgen.adapters.web_api.auth import require_api_key
+from leadgen.adapters.web_api.auth import is_open_mode, require_api_key
 from leadgen.adapters.web_api.schemas import (
     HealthResponse,
     LeadOut,
@@ -305,6 +305,11 @@ def create_app() -> FastAPI:
     async def queue_status() -> dict[str, bool]:
         return {"queue_enabled": is_queue_enabled()}
 
+    @app.get("/api/v1/config", include_in_schema=False)
+    async def api_config() -> dict[str, bool]:
+        """Public config so the frontend knows whether a key is required."""
+        return {"open_mode": is_open_mode()}
+
     # ── SSE: live search progress ───────────────────────────────────────
 
     @app.get("/api/v1/searches/{search_id}/progress")
@@ -321,9 +326,9 @@ def create_app() -> FastAPI:
         connection is short-lived.
         """
         expected = get_settings().web_api_key
-        if not expected:
-            raise HTTPException(status_code=503, detail="web api key not configured")
-        if api_key != expected:
+        if expected and api_key != expected:
+            # When a key is configured we require it on SSE too. Empty
+            # ``WEB_API_KEY`` means open mode (see ``auth.py``).
             raise HTTPException(status_code=401, detail="invalid api_key")
 
         async def event_stream() -> asyncio.AsyncIterator[bytes]:

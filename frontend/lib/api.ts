@@ -1,10 +1,16 @@
 /**
  * Thin client around the FastAPI backend on Railway.
  *
- * Auth is "shared agency key" for now: the user pastes the WEB_API_KEY
- * once on /login, plus a numeric user_id (their Telegram id, since the
- * bot already keys everything on it). Both live in localStorage. Real
- * per-user auth (magic link) lands when public sign-up opens.
+ * Auth model (internal-use stage):
+ *
+ *   No API key, no password. User types their name, we hash it to a
+ *   stable positive integer, store `{displayName, userId}` in local
+ *   storage. The backend runs in "open mode" unless WEB_API_KEY is
+ *   set in Railway — then this module auto-forwards the saved key.
+ *
+ * Real per-user auth (magic link + server session) lands when public
+ * sign-up opens. Until then the backend trusts the caller to pick a
+ * user id the way the bot trusts Telegram to supply one.
  */
 
 export type SearchStatus = "pending" | "running" | "done" | "failed";
@@ -72,10 +78,12 @@ export interface ApiError {
   detail: string;
 }
 
-const STORAGE_KEY_API = "leadgen.apiKey";
 const STORAGE_KEY_USER = "leadgen.userId";
 const STORAGE_KEY_NAME = "leadgen.displayName";
 const STORAGE_KEY_PROF = "leadgen.profession";
+// Optional: carried forward only if the site operator chose to set
+// WEB_API_KEY on the backend. A blank key means open mode.
+const STORAGE_KEY_API = "leadgen.apiKey";
 
 export function getApiBase(): string {
   const url = process.env.NEXT_PUBLIC_API_URL;
@@ -88,58 +96,75 @@ export function getApiBase(): string {
 }
 
 export interface AuthCreds {
-  apiKey: string;
   userId: number;
-  displayName?: string;
+  displayName: string;
   profession?: string;
+  apiKey?: string;
 }
 
 export function readAuth(): AuthCreds | null {
   if (typeof window === "undefined") return null;
-  const apiKey = window.localStorage.getItem(STORAGE_KEY_API);
   const userIdRaw = window.localStorage.getItem(STORAGE_KEY_USER);
-  if (!apiKey || !userIdRaw) return null;
+  const name = window.localStorage.getItem(STORAGE_KEY_NAME);
+  if (!userIdRaw || !name) return null;
   const userId = Number.parseInt(userIdRaw, 10);
   if (!Number.isFinite(userId)) return null;
   return {
-    apiKey,
     userId,
-    displayName: window.localStorage.getItem(STORAGE_KEY_NAME) ?? undefined,
+    displayName: name,
     profession: window.localStorage.getItem(STORAGE_KEY_PROF) ?? undefined,
+    apiKey: window.localStorage.getItem(STORAGE_KEY_API) ?? undefined,
   };
 }
 
 export function writeAuth(creds: AuthCreds): void {
-  window.localStorage.setItem(STORAGE_KEY_API, creds.apiKey);
   window.localStorage.setItem(STORAGE_KEY_USER, String(creds.userId));
-  if (creds.displayName) {
-    window.localStorage.setItem(STORAGE_KEY_NAME, creds.displayName);
-  }
+  window.localStorage.setItem(STORAGE_KEY_NAME, creds.displayName);
   if (creds.profession) {
     window.localStorage.setItem(STORAGE_KEY_PROF, creds.profession);
+  } else {
+    window.localStorage.removeItem(STORAGE_KEY_PROF);
+  }
+  if (creds.apiKey) {
+    window.localStorage.setItem(STORAGE_KEY_API, creds.apiKey);
+  } else {
+    window.localStorage.removeItem(STORAGE_KEY_API);
   }
 }
 
 export function clearAuth(): void {
-  window.localStorage.removeItem(STORAGE_KEY_API);
   window.localStorage.removeItem(STORAGE_KEY_USER);
   window.localStorage.removeItem(STORAGE_KEY_NAME);
   window.localStorage.removeItem(STORAGE_KEY_PROF);
+  window.localStorage.removeItem(STORAGE_KEY_API);
 }
 
-async function request<T>(
-  path: string,
-  init: RequestInit & { apiKey: string }
-): Promise<T> {
-  const { apiKey, headers, ...rest } = init;
-  const res = await fetch(`${getApiBase()}${path}`, {
-    ...rest,
-    headers: {
-      "X-API-Key": apiKey,
-      "Content-Type": "application/json",
-      ...(headers ?? {}),
-    },
-  });
+/**
+ * Stable positive 31-bit integer derived from a string. Used to turn a
+ * display name into a user id that survives reloads and sign-outs so
+ * the same person keeps their search history between sessions without
+ * anyone having to type a number.
+ */
+export function nameToUserId(name: string): number {
+  const s = name.trim().toLowerCase();
+  // FNV-1a 32-bit hash, folded into the positive half so SQL BIGINT is
+  // happy and no leading minus sign sneaks into any UI.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return h & 0x7fffffff;
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const creds = readAuth();
+  const headers = new Headers(init.headers);
+  headers.set("Content-Type", "application/json");
+  if (creds?.apiKey) {
+    headers.set("X-API-Key", creds.apiKey);
+  }
+  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try {
@@ -177,9 +202,7 @@ export async function listSearches(
     user_id: String(creds.userId),
     limit: String(limit),
   });
-  return request<SearchSummary[]>(`/api/v1/searches?${params}`, {
-    apiKey: creds.apiKey,
-  });
+  return request<SearchSummary[]>(`/api/v1/searches?${params}`);
 }
 
 export async function createSearch(
@@ -188,40 +211,28 @@ export async function createSearch(
 ): Promise<SearchCreateResponse> {
   const body: SearchCreatePayload = {
     user_id: creds.userId,
-    display_name: creds.displayName ?? null,
+    display_name: creds.displayName,
     profession: creds.profession ?? null,
     ...payload,
   };
   return request<SearchCreateResponse>("/api/v1/searches", {
-    apiKey: creds.apiKey,
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
 export async function getSearch(
-  creds: AuthCreds,
+  _creds: AuthCreds,
   id: string
 ): Promise<SearchDetail> {
-  return request<SearchDetail>(`/api/v1/searches/${id}`, {
-    apiKey: creds.apiKey,
-  });
+  return request<SearchDetail>(`/api/v1/searches/${id}`);
 }
 
 export async function getSearchLeads(
-  creds: AuthCreds,
+  _creds: AuthCreds,
   id: string
 ): Promise<LeadOut[]> {
-  return request<LeadOut[]>(`/api/v1/searches/${id}/leads`, {
-    apiKey: creds.apiKey,
-  });
-}
-
-export function searchExcelUrl(creds: AuthCreds, id: string): string {
-  // Excel download is a direct link; the browser sends the X-API-Key
-  // via fetch+blob, not via <a href>, so callers should fetch + Blob it.
-  void creds;
-  return `${getApiBase()}/api/v1/searches/${id}/excel`;
+  return request<LeadOut[]>(`/api/v1/searches/${id}/leads`);
 }
 
 export async function downloadExcel(
@@ -229,8 +240,10 @@ export async function downloadExcel(
   id: string,
   filename: string
 ): Promise<void> {
-  const res = await fetch(searchExcelUrl(creds, id), {
-    headers: { "X-API-Key": creds.apiKey },
+  const headers: Record<string, string> = {};
+  if (creds.apiKey) headers["X-API-Key"] = creds.apiKey;
+  const res = await fetch(`${getApiBase()}/api/v1/searches/${id}/excel`, {
+    headers,
   });
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
@@ -263,8 +276,10 @@ export interface ProgressEvent {
 }
 
 export function progressUrl(creds: AuthCreds, id: string): string {
-  const params = new URLSearchParams({ api_key: creds.apiKey });
-  return `${getApiBase()}/api/v1/searches/${id}/progress?${params}`;
+  const params = new URLSearchParams();
+  if (creds.apiKey) params.set("api_key", creds.apiKey);
+  const qs = params.toString();
+  return `${getApiBase()}/api/v1/searches/${id}/progress${qs ? `?${qs}` : ""}`;
 }
 
 export function subscribeProgress(

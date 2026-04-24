@@ -1,57 +1,71 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
-import { HealthBadge } from "@/components/HealthBadge";
-
-const FEATURES = [
-  {
-    title: "Google Maps + reviews, parsed",
-    body: "Pulls every matching company in the region with rating, reviews, phone and website — straight from Google Places.",
-  },
-  {
-    title: "AI scoring per lead",
-    body: "Every site is read by Claude, scored 0–100 against what you sell, and tagged hot / warm / cold so you skip the dead weight.",
-  },
-  {
-    title: "Outreach advice baked in",
-    body: "For every hot lead you get a one-line opener, a list of weak spots to use as hooks, and red flags to avoid. Excel export included.",
-  },
+const STATS = [
+  { num: "90s", label: "Avg. search time" },
+  { num: "50", label: "Leads per query" },
+  { num: "87%", label: "Contact-info accuracy" },
+  { num: "12×", label: "Faster than manual" },
 ];
 
 const STEPS = [
   {
     n: "01",
-    title: "Describe the niche",
-    body: 'Type "roofing companies in New York" or "design studios in Berlin". Free-form, multilingual.',
+    t: "Describe your target",
+    d: "Type a niche and a region. That's it — no filter matrix, no form fatigue. Our assistant can help you narrow it too.",
   },
   {
     n: "02",
-    title: "Watch it work, live",
-    body: "Real-time progress: discovery → website fetch → AI analysis. Usually 60–120 seconds end to end.",
+    t: "We search, enrich, score",
+    d: "We pull matches from Google Places, visit every site, grab socials and reviews, and pass each lead through Claude for a personalized score.",
   },
   {
     n: "03",
-    title: "Get a ready base",
-    body: "50 scored prospects with summaries, weak spots, contacts and an outreach-ready Excel sheet.",
+    t: "Work them as a list",
+    d: "Every lead gets an AI-written pitch tailored to your offer. Sort by score, open the details, export the full base to Excel.",
   },
 ];
 
-export default function HomePage() {
+export default function LandingPage() {
+  const router = useRouter();
+  const [niche, setNiche] = useState("");
+  const [region, setRegion] = useState("");
+
+  const startSearch = () => {
+    const qs = new URLSearchParams();
+    if (niche.trim()) qs.set("niche", niche.trim());
+    if (region.trim()) qs.set("region", region.trim());
+    const query = qs.toString();
+    router.push(`/login${query ? `?${query}` : ""}`);
+  };
+
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "var(--bg)",
+        overflow: "hidden",
+        position: "relative",
+      }}
+    >
       {/* Top nav */}
       <header
         style={{
           position: "sticky",
           top: 0,
-          zIndex: 10,
-          backdropFilter: "blur(20px)",
-          background: "color-mix(in srgb, var(--bg) 86%, transparent)",
+          zIndex: 50,
+          background:
+            "color-mix(in srgb, var(--bg) 85%, transparent)",
+          backdropFilter: "blur(14px)",
           borderBottom: "1px solid var(--border)",
         }}
       >
         <div
           style={{
-            maxWidth: 1180,
+            maxWidth: 1280,
             margin: "0 auto",
             padding: "16px 32px",
             display: "flex",
@@ -63,13 +77,12 @@ export default function HomePage() {
             <span className="sidebar-logo-mark">L</span>
             <span>Leadgen</span>
           </Link>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <HealthBadge />
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Link href="/login" className="btn btn-ghost btn-sm">
               Sign in
             </Link>
-            <Link href="/login?mode=register" className="btn btn-sm">
-              Open the app
+            <Link href="/login" className="btn btn-sm">
+              Open workspace
             </Link>
           </div>
         </div>
@@ -79,181 +92,188 @@ export default function HomePage() {
       <section
         style={{
           position: "relative",
-          padding: "100px 32px 80px",
-          maxWidth: 1180,
-          margin: "0 auto",
+          padding: "80px 32px 120px",
+          overflow: "hidden",
         }}
       >
-        <div className="mesh-bg" style={{ inset: "-40px -40px auto -40px", height: 540 }} />
+        <div className="mesh-bg" style={{ inset: "-80px -80px auto -80px", height: 620 }} />
         <div
           style={{
+            maxWidth: 1100,
+            margin: "0 auto",
             position: "relative",
-            display: "grid",
-            gridTemplateColumns: "1.2fr 1fr",
-            gap: 60,
-            alignItems: "center",
+            textAlign: "center",
           }}
         >
-          <div>
-            <div className="eyebrow" style={{ marginBottom: 18 }}>
-              Seventy Times Agency · Lead Generator
-            </div>
-            <h1
-              style={{
-                fontSize: 64,
-                fontWeight: 700,
-                letterSpacing: "-0.035em",
-                lineHeight: 1.02,
-                margin: "0 0 20px",
-              }}
-            >
-              Qualified B2B leads,{" "}
-              <span style={{ color: "var(--accent)" }}>in under two minutes.</span>
-            </h1>
-            <p
-              style={{
-                fontSize: 19,
-                lineHeight: 1.55,
-                color: "var(--text-muted)",
-                margin: "0 0 32px",
-                maxWidth: 540,
-              }}
-            >
-              Describe what you're looking for. The system pulls matching
-              companies from Google Maps, reads their websites and reviews,
-              scores each one with Claude and hands back a ready-to-contact
-              base with outreach advice.
-            </p>
-            <div style={{ display: "flex", gap: 12 }}>
-              <Link href="/login?mode=register" className="btn btn-lg">
-                Start a search →
-              </Link>
-              <a
-                href="https://t.me/seventytimes_leadgen_bot"
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-ghost btn-lg"
-              >
-                Or use the Telegram bot
-              </a>
-            </div>
-            <div
-              style={{
-                marginTop: 36,
-                display: "flex",
-                gap: 18,
-                color: "var(--text-muted)",
-                fontSize: 13,
-              }}
-            >
-              <span>Google Places</span>
-              <span>·</span>
-              <span>Claude Haiku 4.5</span>
-              <span>·</span>
-              <span>Live enrichment</span>
-            </div>
-          </div>
-
           <div
-            className="card"
+            className="eyebrow"
             style={{
-              background:
-                "linear-gradient(135deg, var(--surface), var(--surface-2))",
-              padding: 28,
-              boxShadow: "var(--shadow-lg)",
-              border: "1px solid var(--border-strong)",
+              marginBottom: 28,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
             }}
           >
-            <div className="eyebrow" style={{ marginBottom: 14 }}>
-              Sample output
-            </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-                marginBottom: 6,
-              }}
-            >
-              <div style={{ fontWeight: 600, fontSize: 16 }}>
-                Roofing co · Brooklyn
-              </div>
-              <span className="chip chip-hot">hot · 88</span>
-            </div>
-            <div
-              style={{
-                color: "var(--text-muted)",
-                fontSize: 13,
-                marginBottom: 18,
-                lineHeight: 1.5,
-              }}
-            >
-              Family-run, 4.7★ on Google · slow Wix site · no booking flow ·
-              great fit for a redesign + lead form.
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-                marginBottom: 18,
-              }}
-            >
-              <div className="chip chip-accent">redesign opportunity</div>
-              <div className="chip chip-accent">slow page speed</div>
-              <div className="chip">no online booking</div>
-              <div className="chip">good reviews</div>
-            </div>
-
-            <div
-              style={{
-                padding: 14,
-                borderRadius: 10,
-                background: "var(--accent-soft)",
-                border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
-                fontSize: 13,
-                lineHeight: 1.55,
-                color: "var(--text)",
-              }}
-            >
-              <b>How to open:</b> reference their 4.7★ reviews and propose a
-              50% faster homepage with a 1-click quote form. Mention you've
-              done it for two other Brooklyn contractors.
-            </div>
+            <span className="status-dot live" />
+            B2B lead intelligence — live in 90 seconds
           </div>
+          <h1
+            style={{
+              fontSize: "clamp(52px, 8vw, 112px)",
+              fontWeight: 700,
+              letterSpacing: "-0.045em",
+              lineHeight: 0.95,
+              margin: "0 0 32px",
+              textWrap: "balance",
+            }}
+          >
+            The first{" "}
+            <span
+              style={{
+                background:
+                  "linear-gradient(120deg, var(--accent), #ec4899, #f59e0b)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
+              50 prospects
+            </span>
+            <br />
+            that actually
+            <br />
+            fit your service.
+          </h1>
+          <p
+            style={{
+              fontSize: 19,
+              color: "var(--text-muted)",
+              maxWidth: 620,
+              margin: "0 auto 40px",
+              lineHeight: 1.55,
+              textWrap: "balance",
+            }}
+          >
+            Describe who you're selling to. We pull every match from Google
+            Places, scan their sites and reviews, and hand you an AI-scored
+            list with a custom pitch for each one.
+          </p>
+
+          {/* Live search bar */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              startSearch();
+            }}
+            style={{
+              maxWidth: 720,
+              margin: "0 auto 18px",
+              display: "grid",
+              gridTemplateColumns: "1fr 220px auto",
+              gap: 8,
+              padding: 8,
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 16,
+              boxShadow: "var(--shadow-lg)",
+            }}
+          >
+            <input
+              className="input"
+              placeholder="roofing companies"
+              value={niche}
+              onChange={(e) => setNiche(e.target.value)}
+              style={{
+                border: "none",
+                background: "transparent",
+                fontSize: 16,
+                padding: "14px 16px",
+              }}
+            />
+            <input
+              className="input"
+              placeholder="New York"
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+              style={{
+                border: "none",
+                borderLeft: "1px solid var(--border)",
+                background: "transparent",
+                fontSize: 16,
+                padding: "14px 16px",
+                borderRadius: 0,
+              }}
+            />
+            <button type="submit" className="btn btn-lg">
+              Run search →
+            </button>
+          </form>
+          <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
+            Try it with your own niche — we'll show you what we'd find
+          </div>
+        </div>
+
+        {/* Fake dashboard preview */}
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "80px auto 0",
+            position: "relative",
+            padding: "0 32px",
+          }}
+        >
+          <LandingPreview />
         </div>
       </section>
 
-      {/* Features */}
+      {/* Stats row */}
       <section
         style={{
-          maxWidth: 1180,
+          maxWidth: 1100,
           margin: "0 auto",
-          padding: "60px 32px",
-          borderTop: "1px solid var(--border)",
+          padding: "20px 32px 100px",
         }}
       >
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 18,
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: 0,
+            border: "1px solid var(--border)",
+            borderRadius: 16,
+            background: "var(--surface)",
+            overflow: "hidden",
           }}
         >
-          {FEATURES.map((f) => (
-            <div key={f.title} className="card">
-              <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 10 }}>
-                {f.title}
+          {STATS.map((s, i) => (
+            <div
+              key={s.label}
+              style={{
+                padding: "28px 24px",
+                borderRight: i < STATS.length - 1 ? "1px solid var(--border)" : "none",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 42,
+                  fontWeight: 700,
+                  letterSpacing: "-0.03em",
+                  color: "var(--accent)",
+                }}
+              >
+                {s.num}
               </div>
               <div
                 style={{
-                  fontSize: 14,
-                  color: "var(--text-muted)",
-                  lineHeight: 1.55,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  color: "var(--text-dim)",
+                  marginTop: 4,
                 }}
               >
-                {f.body}
+                {s.label}
               </div>
             </div>
           ))}
@@ -263,54 +283,73 @@ export default function HomePage() {
       {/* How it works */}
       <section
         style={{
-          maxWidth: 1180,
+          maxWidth: 1100,
           margin: "0 auto",
-          padding: "60px 32px",
+          padding: "0 32px 120px",
         }}
       >
-        <div className="eyebrow" style={{ marginBottom: 12 }}>
+        <div className="eyebrow" style={{ marginBottom: 14 }}>
           How it works
         </div>
         <h2
           style={{
-            fontSize: 36,
-            fontWeight: 600,
-            letterSpacing: "-0.02em",
-            margin: "0 0 36px",
+            fontSize: 56,
+            fontWeight: 700,
+            letterSpacing: "-0.03em",
+            lineHeight: 1.02,
+            margin: "0 0 64px",
+            maxWidth: 780,
           }}
         >
-          From a one-liner to a hot list, in three steps.
+          From niche to{" "}
+          <span
+            style={{
+              fontStyle: "italic",
+              fontWeight: 400,
+              color: "var(--text-muted)",
+            }}
+          >
+            outreach-ready
+          </span>{" "}
+          list, without the grunt work.
         </h2>
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 18,
+            gap: 20,
           }}
         >
           {STEPS.map((s) => (
-            <div key={s.n} className="card">
+            <div key={s.n} className="card" style={{ padding: "28px 24px" }}>
               <div
-                className="mono"
                 style={{
-                  fontSize: 13,
-                  color: "var(--accent)",
-                  marginBottom: 10,
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  color: "var(--text-dim)",
+                  marginBottom: 20,
                 }}
               >
                 {s.n}
               </div>
-              <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 8 }}>
-                {s.title}
+              <div
+                style={{
+                  fontSize: 20,
+                  fontWeight: 600,
+                  letterSpacing: "-0.01em",
+                  marginBottom: 10,
+                }}
+              >
+                {s.t}
               </div>
               <div
                 style={{
                   fontSize: 14,
-                  color: "var(--text-muted)",
                   lineHeight: 1.55,
+                  color: "var(--text-muted)",
                 }}
               >
-                {s.body}
+                {s.d}
               </div>
             </div>
           ))}
@@ -320,68 +359,235 @@ export default function HomePage() {
       {/* CTA */}
       <section
         style={{
-          maxWidth: 1180,
-          margin: "0 auto",
-          padding: "60px 32px 120px",
+          padding: "80px 32px",
+          borderTop: "1px solid var(--border)",
+          background: "var(--surface)",
         }}
       >
         <div
-          className="card"
           style={{
-            position: "relative",
-            overflow: "hidden",
-            padding: 56,
+            maxWidth: 900,
+            margin: "0 auto",
             textAlign: "center",
-            background: "linear-gradient(135deg, var(--surface), var(--surface-2))",
-            border: "1px solid var(--border-strong)",
+            position: "relative",
           }}
         >
-          <div className="mesh-bg" style={{ opacity: 0.6 }} />
-          <div style={{ position: "relative" }}>
-            <h2
+          <h2
+            style={{
+              fontSize: "clamp(42px, 7vw, 64px)",
+              fontWeight: 700,
+              letterSpacing: "-0.04em",
+              lineHeight: 0.98,
+              margin: "0 0 24px",
+            }}
+          >
+            Stop prospecting.
+            <br />
+            <span
               style={{
-                fontSize: 38,
-                fontWeight: 700,
-                letterSpacing: "-0.025em",
-                margin: "0 0 14px",
-              }}
-            >
-              Stop scrolling Maps. Start sending pitches.
-            </h2>
-            <p
-              style={{
-                fontSize: 17,
+                fontStyle: "italic",
+                fontWeight: 400,
                 color: "var(--text-muted)",
-                margin: "0 auto 28px",
-                maxWidth: 520,
-                lineHeight: 1.55,
               }}
             >
-              Open the workspace, paste your team API key, and run your first
-              search. Five free searches, no card.
-            </p>
-            <Link href="/login?mode=register" className="btn btn-lg">
-              Open the workspace →
+              Start closing.
+            </span>
+          </h2>
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              justifyContent: "center",
+              marginTop: 36,
+            }}
+          >
+            <Link href="/login" className="btn btn-lg">
+              Open workspace →
             </Link>
+            <a
+              href="https://t.me/seventytimes_leadgen_bot"
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-ghost btn-lg"
+            >
+              Or use the Telegram bot
+            </a>
           </div>
         </div>
       </section>
 
       <footer
         style={{
+          padding: "30px 32px",
           borderTop: "1px solid var(--border)",
-          padding: "28px 32px",
-          color: "var(--text-muted)",
-          fontSize: 13,
           display: "flex",
           justifyContent: "space-between",
-          maxWidth: 1180,
-          margin: "0 auto",
+          fontSize: 12.5,
+          color: "var(--text-dim)",
         }}
       >
-        <span>© 2026 Seventy Times Agency · Built for our team and yours.</span>
-        <span>Made with Claude · FastAPI · Next.js</span>
+        <div>© 2026 Leadgen. Built for agencies.</div>
+        <div style={{ display: "flex", gap: 20 }}>
+          <span>Seventy Times Agency</span>
+        </div>
       </footer>
+    </div>
+  );
+}
+
+function LandingPreview() {
+  const leads = [
+    { name: "Apex Urban Roofing", address: "Brooklyn, NY", rating: 4.7, score: 88, temp: "hot" },
+    { name: "Hudson Valley Roofers", address: "Yonkers, NY", rating: 4.5, score: 78, temp: "hot" },
+    { name: "Bronx Skyline Roof Co.", address: "Bronx, NY", rating: 4.2, score: 62, temp: "warm" },
+    { name: "Queens Rooftop LLC", address: "Queens, NY", rating: 3.9, score: 41, temp: "cold" },
+  ];
+  const color = (t: string) =>
+    t === "hot" ? "var(--hot)" : t === "warm" ? "var(--warm)" : "var(--cold)";
+
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 20,
+        overflow: "hidden",
+        boxShadow: "0 40px 100px -20px rgba(15, 15, 20, 0.18)",
+        transform: "perspective(1800px) rotateX(3deg)",
+      }}
+    >
+      <div
+        style={{
+          padding: "12px 16px",
+          borderBottom: "1px solid var(--border)",
+          background: "var(--surface-2)",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <div style={{ display: "flex", gap: 6 }}>
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#FF5F57" }} />
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#FEBC2E" }} />
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#28C840" }} />
+        </div>
+        <div
+          style={{
+            flex: 1,
+            textAlign: "center",
+            fontSize: 12,
+            color: "var(--text-muted)",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
+          leadgen.app/sessions/roofing-nyc
+        </div>
+      </div>
+      <div
+        style={{
+          padding: 28,
+          display: "grid",
+          gridTemplateColumns: "200px 1fr",
+          gap: 20,
+          minHeight: 360,
+        }}
+      >
+        <div>
+          <div className="eyebrow" style={{ marginBottom: 14, fontSize: 9 }}>
+            Session
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>
+            Roofing · NYC
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 20 }}>
+            48 leads analyzed
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
+            {[
+              { label: "Hot", value: 9, dot: "hot" },
+              { label: "Warm", value: 22, dot: "warm" },
+              { label: "Cold", value: 17, dot: "cold" },
+            ].map((r) => (
+              <div
+                key={r.label}
+                style={{ display: "flex", justifyContent: "space-between" }}
+              >
+                <span style={{ color: "var(--text-muted)" }}>
+                  <span
+                    className={`status-dot ${r.dot}`}
+                    style={{ marginRight: 6 }}
+                  />
+                  {r.label}
+                </span>
+                <span className="mono">{r.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {leads.map((l) => (
+            <div
+              key={l.name}
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                padding: "12px 14px",
+                display: "grid",
+                gridTemplateColumns: "auto 1fr auto auto",
+                alignItems: "center",
+                gap: 14,
+              }}
+            >
+              <span className={`status-dot ${l.temp}`} />
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 13.5,
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {l.name}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11.5,
+                    color: "var(--text-muted)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {l.address}
+                </div>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  color: "var(--text-muted)",
+                  fontSize: 12,
+                }}
+              >
+                ★ {l.rating}
+              </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: color(l.temp),
+                }}
+              >
+                {l.score}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

@@ -13,21 +13,26 @@
   --text-muted: #6b6b70;
   --text-dim: #9a9a9f;
 
-  --accent: #3d5afe;
-  --accent-hover: #2c3fbe;
-  --accent-soft: rgba(61, 90, 254, 0.08);
+  /* Accent — soft magenta pulled straight from the prototype's
+     TWEAK_DEFAULTS. The base palette stays light-gallery-warm so the
+     accent colour carries the entire brand signal. */
+  --accent: #df5d91;
+  --accent-hover: #c44a7b;
+  --accent-soft: rgba(223, 93, 145, 0.1);
   --accent-fg: #ffffff;
 
   --hot: #16a34a;
   --warm: #f59e0b;
   --cold: #dc2626;
 
-  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans:
+    "Inter", "Geist", system-ui, -apple-system, sans-serif;
+  --font-serif: "Instrument Serif", Georgia, serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
 
-  --radius: 12px;
-  --radius-sm: 8px;
-  --radius-lg: 20px;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-lg: 24px;
   --radius-pill: 999px;
 
   --shadow-sm: 0 1px 2px rgba(15, 15, 20, 0.04);
@@ -210,6 +215,42 @@ button {
   background: var(--accent-soft);
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* Status dots — tiny LED-style signal for lead temperature */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+.status-dot.hot {
+  background: var(--hot);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hot) 22%, transparent);
+}
+.status-dot.warm {
+  background: var(--warm);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warm) 22%, transparent);
+}
+.status-dot.cold {
+  background: var(--cold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cold) 22%, transparent);
+}
+.status-dot.live {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
 }
 
 /* Mesh blob backdrop */
