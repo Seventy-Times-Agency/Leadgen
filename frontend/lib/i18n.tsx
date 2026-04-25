@@ -265,6 +265,9 @@ const TRANSLATIONS = {
     "detail.stat.warm": "тёплых",
     "detail.stat.cold": "холодных",
     "detail.insights.eyebrow": "AI-инсайт рынка",
+    "detail.working.title": "AI всё ещё анализирует лидов",
+    "detail.working.body":
+      "Парсер уже собрал компании. Сейчас Claude посещает их сайты, читает отзывы и оценивает каждого под ваш профиль. Готово {done} из {total} — страница обновится сама.",
     "detail.filter.all": "Все · {n}",
     "detail.filter.hot": "Горячие · {n}",
     "detail.filter.warm": "Тёплые · {n}",
@@ -583,6 +586,9 @@ const TRANSLATIONS = {
     "detail.stat.warm": "warm",
     "detail.stat.cold": "cold",
     "detail.insights.eyebrow": "AI market insight",
+    "detail.working.title": "AI is still scoring your leads",
+    "detail.working.body":
+      "The parser already pulled the companies. Claude is visiting each site, reading reviews and scoring them against your profile. {done} of {total} done — this page refreshes on its own.",
     "detail.filter.all": "All · {n}",
     "detail.filter.hot": "Hot · {n}",
     "detail.filter.warm": "Warm · {n}",

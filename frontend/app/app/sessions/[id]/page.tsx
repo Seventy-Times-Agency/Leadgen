@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon } from "@/components/Icon";
@@ -18,6 +18,8 @@ import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 type Filter = "all" | LeadTemp;
 
+const POLL_INTERVAL_MS = 4000;
+
 export default function SessionDetailPage() {
   const params = useParams<{ id: string }>();
   const searchId = params.id;
@@ -28,25 +30,36 @@ export default function SessionDetailPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [active, setActive] = useState<Lead | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
+    cancelledRef.current = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const tick = async () => {
       try {
         const [s, ls] = await Promise.all([
           getSearch(searchId),
           getSearchLeads(searchId),
         ]);
-        if (cancelled) return;
+        if (cancelledRef.current) return;
         setSession(s);
         setLeads(ls);
+        if (s.status === "running" || s.status === "pending") {
+          timer = setTimeout(tick, POLL_INTERVAL_MS);
+        }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (!cancelledRef.current) {
+          setError(e instanceof Error ? e.message : String(e));
+        }
       }
     };
-    load();
+
+    tick();
+
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
+      if (timer) clearTimeout(timer);
     };
   }, [searchId]);
 
@@ -69,6 +82,8 @@ export default function SessionDetailPage() {
     | "running"
     | "done"
     | "failed";
+  const isWorking = statusKey === "running" || statusKey === "pending";
+  const enrichedCount = leads.filter((l) => l.score_ai !== null).length;
 
   return (
     <>
@@ -131,6 +146,12 @@ export default function SessionDetailPage() {
                 </div>
                 <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                   <span className="chip">
+                    {isWorking && (
+                      <span
+                        className="status-dot live"
+                        style={{ marginRight: 6 }}
+                      />
+                    )}
                     {t(`detail.status.${statusKey}` as TranslationKey)}
                   </span>
                   <span className="chip">
@@ -166,6 +187,61 @@ export default function SessionDetailPage() {
                 </div>
               ))}
             </div>
+
+            {isWorking && (
+              <div
+                className="card"
+                style={{
+                  padding: "16px 20px",
+                  marginBottom: 20,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  background: "var(--surface-2)",
+                  border:
+                    "1px solid color-mix(in srgb, var(--accent) 25%, var(--border))",
+                }}
+              >
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    background: "var(--accent-soft)",
+                    display: "grid",
+                    placeItems: "center",
+                    color: "var(--accent)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Icon name="sparkles" size={18} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      marginBottom: 2,
+                    }}
+                  >
+                    {t("detail.working.title")}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      color: "var(--text-muted)",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {t("detail.working.body", {
+                      done: enrichedCount,
+                      total: leads.length,
+                    })}
+                  </div>
+                </div>
+                <div className="shimmer-line" style={{ width: 80, flexShrink: 0 }} />
+              </div>
+            )}
 
             {session.insights && (
               <div
