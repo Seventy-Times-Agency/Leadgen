@@ -844,6 +844,15 @@ class AIAnalyzer:
             "Google Maps: короткий живой диалог, по одному вопросу за раз. "
             "Цель — вытянуть нишу клиентов, регион и важные детали о "
             "том, кто идеальный лид и кого исключить.\n\n"
+            "Жёсткие рамки:\n"
+            "- Ты строго в теме лидогенерации и подбора B2B-клиентов "
+            "из Google Maps. Если пользователь начинает говорить о чём-то "
+            "вне темы (погода, политика, общие вопросы, программирование, "
+            "анекдоты, личная жизнь, что угодно за пределами подбора "
+            "лидов) — коротко, вежливо, по-человечески откажи и верни "
+            "разговор к настройке поиска. Не вступай в обсуждение.\n"
+            "- Не выдумывай факты о пользователе. Если деталей нет — "
+            "просто спроси.\n\n"
             "Правила диалога:\n"
             "- Веди себя как опытный консультант, не как форма. Задавай "
             "по одному уточняющему вопросу за раз, реагируй на ответы.\n"
@@ -890,6 +899,154 @@ class AIAnalyzer:
             "ready": bool(data.get("ready"))
             and bool(_trim_or_none(data.get("niche")))
             and bool(_trim_or_none(data.get("region"))),
+        }
+
+    async def assistant_chat(
+        self,
+        history: list[dict[str, str]],
+        user_profile: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """One round-trip of the floating in-product assistant chat.
+
+        Same Henry persona, broader scope: he answers questions about
+        the Leadgen product, helps the user phrase their profile, and
+        explains what hot/warm/cold or AI-score mean. Stays strictly
+        on-topic — refuses anything unrelated.
+
+        When confident, may propose a profile update via the
+        ``profile_suggestion`` slot. The frontend shows it as an
+        explicit "Apply" button so nothing is written without a click.
+        """
+        clean_history = [
+            {"role": m["role"], "content": str(m.get("content", "")).strip()}
+            for m in history
+            if m.get("role") in {"user", "assistant"} and m.get("content")
+        ]
+        empty_response = {
+            "reply": "",
+            "profile_suggestion": None,
+            "suggestion_summary": None,
+        }
+        if not clean_history:
+            empty_response["reply"] = (
+                "Привет, я Henry — ваш консультант по Leadgen. "
+                "Могу помочь с настройкой профиля, объяснить как работает "
+                "оценка лидов, подсказать как точнее описать ваш сегмент. "
+                "С чем поможем?"
+            )
+            return empty_response
+
+        if self.client is None:
+            empty_response["reply"] = (
+                "Сейчас я могу отвечать только когда AI подключён. "
+                "Попробуйте позже или заполните профиль вручную в /app/profile."
+            )
+            return empty_response
+
+        profile_block = _format_user_profile(user_profile) if user_profile else ""
+        system = (
+            "Ты — Henry, встроенный консультант сервиса Leadgen. "
+            "Веди себя как живой человек: профессионально, по-деловому, "
+            "коротко. Никогда не упоминай что ты ИИ.\n\n"
+            "Что входит в твою зону ответственности:\n"
+            "1. Подбор B2B-клиентов из Google Maps: ниши, регионы, "
+            "критерии оценки лидов.\n"
+            "2. Помощь с заполнением рабочего профиля пользователя: имя, "
+            "возрастная категория, размер бизнеса, что он продаёт "
+            "(profession + service_description), домашний регион, "
+            "целевые ниши. Эти данные используются для персонализации "
+            "AI-оценки каждого лида.\n"
+            "3. Объяснение продукта: hot/warm/cold-скоры, как работает "
+            "анализ, что такое сессия, что делает команда.\n\n"
+            "Жёсткие рамки:\n"
+            "- Не обсуждай ничего вне Leadgen-контекста (погода, "
+            "политика, программирование, личная жизнь, общая болтовня). "
+            "Коротко и вежливо откажись и верни диалог к делу.\n"
+            "- Не запрашивай и не сохраняй конфиденциальные данные "
+            "(паспорт, банковские реквизиты, пароли, телефон, точный "
+            "адрес). Профиль — это бизнес-описание, а не персональные "
+            "данные.\n"
+            "- Не выдумывай. Если деталей не хватает — спроси.\n"
+            "- Один уточняющий вопрос за раз. 1–4 предложения на ответ. "
+            "Язык собеседника. Без markdown, без эмодзи.\n\n"
+            "Когда из разговора стало ясно, какое значение пользователь "
+            "хочет видеть в одном или нескольких полях профиля — "
+            "положи их в ``profile_suggestion`` (только реально "
+            "обозначенные поля, остальное — null). Пользователь увидит "
+            "карточку с кнопкой ``Применить`` и сам подтвердит. "
+            "``suggestion_summary`` — короткое описание изменений на "
+            "языке собеседника (например «Обновлю профессию на «SEO для "
+            "локальных подрядчиков» и добавлю две ниши»).\n\n"
+            "Поля профиля, которыми ты можешь предлагать изменения:\n"
+            "- display_name (string)\n"
+            "- age_range (одно из: <18, 18-24, 25-34, 35-44, 45-54, 55+)\n"
+            "- business_size (одно из: solo, small, medium, large)\n"
+            "- service_description (свободный текст что продаёт)\n"
+            "- home_region (string)\n"
+            "- niches (массив строк, 1-7 штук)\n\n"
+            "Формат ответа — СТРОГО JSON без markdown:\n"
+            '{"reply": "…", "profile_suggestion": null или объект с '
+            'указанными выше полями (только заполненные), '
+            '"suggestion_summary": "…|null"}'
+        )
+        if profile_block:
+            system += "\n\nТекущий профиль пользователя:\n" + profile_block
+
+        try:
+            async with self._sem:
+                msg = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=700,
+                    system=system,
+                    messages=clean_history,
+                )
+                raw = msg.content[0].text  # type: ignore[union-attr]
+                data = _extract_json(raw) or {}
+        except Exception:  # noqa: BLE001
+            logger.exception("assistant_chat failed")
+            return {
+                "reply": "Не удалось получить ответ. Попробуйте ещё раз.",
+                "profile_suggestion": None,
+                "suggestion_summary": None,
+            }
+
+        suggestion_raw = data.get("profile_suggestion")
+        suggestion: dict[str, Any] | None = None
+        if isinstance(suggestion_raw, dict):
+            allowed = {
+                "display_name",
+                "age_range",
+                "business_size",
+                "service_description",
+                "home_region",
+                "niches",
+            }
+            suggestion = {}
+            for key in allowed:
+                value = suggestion_raw.get(key)
+                if value is None:
+                    continue
+                if key == "niches":
+                    if isinstance(value, list):
+                        cleaned = [
+                            str(v).strip()
+                            for v in value
+                            if isinstance(v, str) and str(v).strip()
+                        ]
+                        if cleaned:
+                            suggestion[key] = cleaned[:7]
+                    continue
+                text = str(value).strip()
+                if text:
+                    suggestion[key] = text
+            if not suggestion:
+                suggestion = None
+
+        return {
+            "reply": str(data.get("reply") or "").strip()
+            or "Расскажите подробнее, чтобы я мог помочь.",
+            "profile_suggestion": suggestion,
+            "suggestion_summary": _trim_or_none(data.get("suggestion_summary")),
         }
 
     async def base_insights(

@@ -33,6 +33,9 @@ from sqlalchemy.exc import IntegrityError
 
 from leadgen.adapters.web_api.schemas import (
     WEB_DEMO_USER_ID,
+    AssistantProfileSuggestion,
+    AssistantRequest,
+    AssistantResponse,
     AuthUser,
     ConsultRequest,
     ConsultResponse,
@@ -454,6 +457,46 @@ def create_app() -> FastAPI:
         analyzer = AIAnalyzer()
         result = await analyzer.consult_search(history, user_profile or None)
         return ConsultResponse(**result)
+
+    # ── /api/v1/assistant/chat ─────────────────────────────────────────
+
+    @app.post("/api/v1/assistant/chat", response_model=AssistantResponse)
+    async def assistant_chat(body: AssistantRequest) -> AssistantResponse:
+        """Floating in-product assistant. Same Henry persona,
+        product-help scope. May propose a ``profile_suggestion`` the
+        user can apply with one click.
+        """
+        async with session_factory() as session:
+            user = await session.get(User, body.user_id)
+
+        user_profile: dict[str, Any] = {}
+        if user is not None:
+            user_profile = {
+                "display_name": user.display_name or user.first_name,
+                "age_range": user.age_range,
+                "business_size": user.business_size,
+                "profession": user.profession,
+                "service_description": user.service_description,
+                "home_region": user.home_region,
+                "niches": list(user.niches or []),
+                "language_code": user.language_code,
+            }
+
+        history = [m.model_dump() for m in body.messages]
+        analyzer = AIAnalyzer()
+        result = await analyzer.assistant_chat(history, user_profile or None)
+
+        suggestion_dict = result.get("profile_suggestion")
+        suggestion = (
+            AssistantProfileSuggestion(**suggestion_dict)
+            if isinstance(suggestion_dict, dict)
+            else None
+        )
+        return AssistantResponse(
+            reply=result.get("reply", ""),
+            profile_suggestion=suggestion,
+            suggestion_summary=result.get("suggestion_summary"),
+        )
 
     # ── /api/v1/searches ───────────────────────────────────────────────
 

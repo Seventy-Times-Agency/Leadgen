@@ -231,6 +231,23 @@ const TRANSLATIONS = {
     "search.form.exclude": "Кого не нужно",
     "search.form.excludeHint": "по желанию",
     "search.form.excludePh": "например: сети, франшизы, стоматологии без сайта",
+
+    // Floating assistant (Henry)
+    "assistant.open": "Открыть Henry",
+    "assistant.close": "Свернуть",
+    "assistant.reset": "Очистить чат",
+    "assistant.role": "Консультант по Leadgen",
+    "assistant.thinking": "Думаю...",
+    "assistant.placeholder": "Спросите Henry...",
+    "assistant.greeting":
+      "Привет, я Henry — ваш консультант по Leadgen. Помогу настроить профиль, объясню как работает оценка лидов или подскажу как точнее описать целевой сегмент. С чем поможем?",
+    "assistant.error":
+      "Не получилось получить ответ ({detail}). Попробуйте ещё раз.",
+    "assistant.suggestion": "Предложенные изменения профиля",
+    "assistant.apply": "Применить",
+    "assistant.applied": "Профиль обновлён.",
+    "assistant.applyError":
+      "Не получилось обновить профиль ({detail}).",
     "search.chat.tryThese": "Попробуйте один из вариантов",
     "search.chat.placeholder": "Опишите кого ищете…",
     "search.chat.gotIt":
@@ -624,6 +641,22 @@ const TRANSLATIONS = {
     "search.form.exclude": "Skip these",
     "search.form.excludeHint": "optional",
     "search.form.excludePh": "e.g. franchises, chains, dentists with no website",
+
+    "assistant.open": "Open Henry",
+    "assistant.close": "Minimise",
+    "assistant.reset": "Clear chat",
+    "assistant.role": "Leadgen consultant",
+    "assistant.thinking": "Thinking...",
+    "assistant.placeholder": "Ask Henry...",
+    "assistant.greeting":
+      "Hi, I'm Henry — your Leadgen consultant. I can help tune your profile, explain how lead scoring works, or sharpen how you describe your target segment. What can I help with?",
+    "assistant.error":
+      "Couldn't get a reply ({detail}). Try again.",
+    "assistant.suggestion": "Profile changes Henry suggests",
+    "assistant.apply": "Apply",
+    "assistant.applied": "Profile updated.",
+    "assistant.applyError":
+      "Couldn't update profile ({detail}).",
     "search.chat.tryThese": "Try one of these",
     "search.chat.placeholder": "Describe who you're looking for…",
     "search.chat.gotIt":

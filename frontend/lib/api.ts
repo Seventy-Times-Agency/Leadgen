@@ -325,6 +325,30 @@ export async function consultSearch(
   });
 }
 
+export interface AssistantProfileSuggestion {
+  display_name?: string | null;
+  age_range?: string | null;
+  business_size?: string | null;
+  service_description?: string | null;
+  home_region?: string | null;
+  niches?: string[] | null;
+}
+
+export interface AssistantResponse {
+  reply: string;
+  profile_suggestion: AssistantProfileSuggestion | null;
+  suggestion_summary: string | null;
+}
+
+export async function assistantChat(
+  messages: ConsultMessage[],
+): Promise<AssistantResponse> {
+  return request<AssistantResponse>("/api/v1/assistant/chat", {
+    method: "POST",
+    body: JSON.stringify({ user_id: requireUserId(), messages }),
+  });
+}
+
 export async function createSearch(
   body: SearchCreate & { team_id?: string },
 ): Promise<SearchCreateResponse> {

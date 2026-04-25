@@ -11,11 +11,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon, type IconName } from "@/components/Icon";
-
-/** Avatar shown for the consultant in the chat. Drop the photo at
- *  frontend/public/henry.jpg and it'll be picked up automatically;
- *  if missing, the gradient initials fallback renders. */
-const HENRY_AVATAR_URL = "/henry.jpg";
+import { HenryAvatar } from "@/components/HenryAvatar";
 import {
   ApiError,
   consultSearch,
@@ -374,47 +370,6 @@ function ChatColumn({
   );
 }
 
-function HenryAvatar({ size }: { size: number }) {
-  const [broken, setBroken] = useState(false);
-  if (broken || !HENRY_AVATAR_URL) {
-    return (
-      <div
-        style={{
-          width: size,
-          height: size,
-          borderRadius: "50%",
-          background: "linear-gradient(135deg, #1E3A8A, #3B82F6)",
-          display: "grid",
-          placeItems: "center",
-          color: "white",
-          fontSize: Math.round(size * 0.42),
-          fontWeight: 700,
-          letterSpacing: "-0.02em",
-          flexShrink: 0,
-        }}
-      >
-        H
-      </div>
-    );
-  }
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={HENRY_AVATAR_URL}
-      alt="Henry"
-      width={size}
-      height={size}
-      onError={() => setBroken(true)}
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        objectFit: "cover",
-        flexShrink: 0,
-      }}
-    />
-  );
-}
 
 function ChatBubble({ msg }: { msg: ChatMsg }) {
   const isBot = msg.role === "assistant";

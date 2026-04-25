@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { RequireAuth } from "@/components/RequireAuth";
+import { AssistantWidget } from "@/components/AssistantWidget";
 
 /**
  * Shell layout for all authenticated-area pages (/app/*).
@@ -8,6 +9,9 @@ import { RequireAuth } from "@/components/RequireAuth";
  * RequireAuth gates the subtree on a localStorage user record; an
  * unauthenticated visitor is redirected to /login before any of the
  * dashboard / search / CRM pages mount.
+ *
+ * AssistantWidget mounts here so Henry's floating bubble follows the
+ * user across every workspace page.
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
@@ -16,6 +20,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <Sidebar />
         <main className="main-area">{children}</main>
       </div>
+      <AssistantWidget />
     </RequireAuth>
   );
 }

@@ -117,6 +117,36 @@ class ConsultResponse(BaseModel):
     ready: bool = False
 
 
+class AssistantRequest(BaseModel):
+    """One round-trip of the floating in-product assistant chat."""
+
+    user_id: int
+    messages: list[ConsultMessage] = Field(default_factory=list, max_length=40)
+
+
+class AssistantProfileSuggestion(BaseModel):
+    """Profile fields Henry proposes to update.
+
+    All fields are optional; only the ones the user actually agreed to
+    in the conversation come back populated. The frontend renders
+    these as a card with an explicit Apply button so nothing is
+    written without confirmation.
+    """
+
+    display_name: str | None = None
+    age_range: str | None = None
+    business_size: str | None = None
+    service_description: str | None = None
+    home_region: str | None = None
+    niches: list[str] | None = None
+
+
+class AssistantResponse(BaseModel):
+    reply: str
+    profile_suggestion: AssistantProfileSuggestion | None = None
+    suggestion_summary: str | None = None
+
+
 class SearchCreate(BaseModel):
     user_id: int = Field(
         default=WEB_DEMO_USER_ID,
