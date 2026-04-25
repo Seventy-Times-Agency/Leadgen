@@ -101,11 +101,19 @@ class ConsultRequest(BaseModel):
     """One round-trip of the search-composer dialogue.
 
     The client owns the full conversation history and ships it on
-    every turn so the backend stays stateless.
+    every turn so the backend stays stateless. ``current_*`` fields
+    carry the slot values the frontend already shows in the form so
+    Claude doesn't re-extract from scratch and accidentally
+    overwrite settled answers with stray phrases from the latest
+    user reply.
     """
 
     user_id: int
     messages: list[ConsultMessage] = Field(default_factory=list, max_length=40)
+    current_niche: str | None = None
+    current_region: str | None = None
+    current_ideal_customer: str | None = None
+    current_exclusions: str | None = None
 
 
 class ConsultResponse(BaseModel):

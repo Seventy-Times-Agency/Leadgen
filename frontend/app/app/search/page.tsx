@@ -123,6 +123,12 @@ function NewSearchInner() {
     try {
       const reply = await consultSearch(
         nextHistory.map(({ role, content }) => ({ role, content })),
+        {
+          niche: niche || null,
+          region: region || null,
+          ideal_customer: idealCustomer || null,
+          exclusions: exclusions || null,
+        },
       );
 
       // Update extracted fields. Don't clobber values the user typed

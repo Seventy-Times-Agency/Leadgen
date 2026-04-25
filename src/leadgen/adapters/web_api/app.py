@@ -535,8 +535,18 @@ def create_app() -> FastAPI:
             }
 
         history = [m.model_dump() for m in body.messages]
+        current_state = {
+            "niche": body.current_niche,
+            "region": body.current_region,
+            "ideal_customer": body.current_ideal_customer,
+            "exclusions": body.current_exclusions,
+        }
         analyzer = AIAnalyzer()
-        result = await analyzer.consult_search(history, user_profile or None)
+        result = await analyzer.consult_search(
+            history,
+            user_profile or None,
+            current_state=current_state,
+        )
         return ConsultResponse(**result)
 
     # ── /api/v1/assistant/chat ─────────────────────────────────────────

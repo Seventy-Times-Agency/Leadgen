@@ -320,12 +320,27 @@ export interface ConsultResponse {
   ready: boolean;
 }
 
+export interface ConsultCurrentState {
+  niche?: string | null;
+  region?: string | null;
+  ideal_customer?: string | null;
+  exclusions?: string | null;
+}
+
 export async function consultSearch(
   messages: ConsultMessage[],
+  currentState: ConsultCurrentState = {},
 ): Promise<ConsultResponse> {
   return request<ConsultResponse>("/api/v1/search/consult", {
     method: "POST",
-    body: JSON.stringify({ user_id: requireUserId(), messages }),
+    body: JSON.stringify({
+      user_id: requireUserId(),
+      messages,
+      current_niche: currentState.niche ?? null,
+      current_region: currentState.region ?? null,
+      current_ideal_customer: currentState.ideal_customer ?? null,
+      current_exclusions: currentState.exclusions ?? null,
+    }),
   });
 }
 

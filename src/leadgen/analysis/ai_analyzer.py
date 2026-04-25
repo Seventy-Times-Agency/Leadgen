@@ -1007,31 +1007,34 @@ class AIAnalyzer:
         self,
         history: list[dict[str, str]],
         user_profile: dict[str, Any] | None = None,
+        current_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """One turn of a consultative dialogue for the search composer.
 
-        ``history`` is the full ordered conversation so far — each item
-        ``{"role": "user" | "assistant", "content": "..."}``. The
-        function calls Claude with a system prompt that frames it as a
-        focused B2B lead-gen consultant, then returns::
+        ``history`` is the full ordered conversation so far. Each item
+        ``{"role": "user" | "assistant", "content": "..."}``.
 
-            {
-                "reply": str,             # next assistant message
-                "niche": str | None,
-                "region": str | None,
-                "ideal_customer": str | None,
-                "exclusions": str | None,
-                "ready": bool,            # true when niche + region known
-            }
+        ``current_state`` carries the slot values the frontend already
+        shows in the form (so Claude doesn't re-extract from scratch
+        and accidentally clobber a settled answer with stray phrases
+        from the latest user reply). Keys: niche, region,
+        ideal_customer, exclusions.
 
-        On any failure it falls back to a single best-effort assistant
-        line plus heuristic slot extraction so the UI never freezes.
+        Returns the next assistant message + the up-to-date best
+        guess for every slot + a ``ready`` flag (niche AND region
+        known). Heuristic fallback covers the no-API-key case.
         """
         clean_history = [
             {"role": m["role"], "content": str(m.get("content", "")).strip()}
             for m in history
             if m.get("role") in {"user", "assistant"} and m.get("content")
         ]
+        state = current_state or {}
+        carried_niche = _trim_or_none(state.get("niche"))
+        carried_region = _trim_or_none(state.get("region"))
+        carried_ideal = _trim_or_none(state.get("ideal_customer"))
+        carried_exclusions = _trim_or_none(state.get("exclusions"))
+
         if not clean_history:
             return {
                 "reply": (
@@ -1039,17 +1042,43 @@ class AIAnalyzer:
                     "в каком городе или регионе, и что именно делает "
                     "идеального клиента для вас."
                 ),
-                "niche": None,
-                "region": None,
-                "ideal_customer": None,
-                "exclusions": None,
-                "ready": False,
+                "niche": carried_niche,
+                "region": carried_region,
+                "ideal_customer": carried_ideal,
+                "exclusions": carried_exclusions,
+                "ready": bool(carried_niche and carried_region),
             }
 
         if self.client is None:
-            return _heuristic_consult(clean_history)
+            fallback = _heuristic_consult(clean_history)
+            # Don't let the heuristic blank out values the user
+            # already confirmed earlier in the dialogue.
+            fallback["niche"] = fallback.get("niche") or carried_niche
+            fallback["region"] = fallback.get("region") or carried_region
+            fallback["ideal_customer"] = (
+                fallback.get("ideal_customer") or carried_ideal
+            )
+            fallback["exclusions"] = (
+                fallback.get("exclusions") or carried_exclusions
+            )
+            fallback["ready"] = bool(
+                fallback["niche"] and fallback["region"]
+            )
+            return fallback
 
         profile_block = _format_user_profile(user_profile) if user_profile else ""
+        state_block = (
+            "\n\nТЕКУЩЕЕ СОСТОЯНИЕ ФОРМЫ (уже извлечено и видно "
+            "пользователю справа):\n"
+            f"- niche: {carried_niche or 'null'}\n"
+            f"- region: {carried_region or 'null'}\n"
+            f"- ideal_customer: {carried_ideal or 'null'}\n"
+            f"- exclusions: {carried_exclusions or 'null'}\n"
+            "Эти значения УЖЕ записаны в форме. Не перезаписывай их, "
+            "если пользователь явно не поправляет соответствующее поле. "
+            "Если поле уже заполнено и пользователь не упоминает его — "
+            "верни тот же текст что в текущем состоянии (не null).\n"
+        )
         system = (
             "Ты — Henry, AI-консультант сервиса Leadgen. "
             "Веди себя как живой человек: профессионально, по-деловому, "
@@ -1067,6 +1096,27 @@ class AIAnalyzer:
             "разговор к настройке поиска. Не вступай в обсуждение.\n"
             "- Не выдумывай факты о пользователе. Если деталей нет — "
             "просто спроси.\n\n"
+            "КАК РАЗБИРАТЬ ОТВЕТЫ ПОЛЬЗОВАТЕЛЯ (важно):\n"
+            "- Помни какой вопрос ты только что задал. Если в твоей "
+            "последней реплике ты спросил про регион — ответ "
+            "пользователя относится к региону, не к нише. Аналогично "
+            "для ideal_customer и exclusions.\n"
+            "- Если пользователь говорит «давай для примера город "
+            "Х» / «возьмём город Х» / «начнём с Х» — это явное "
+            "указание региона = X. Извлекай именно конкретный город, "
+            "не абстрактный охват «вся Европа».\n"
+            "- niche должен быть КОРОТКИМ, в форме поискового запроса "
+            "Google Maps (например «full-stack marketing agency», "
+            "«стоматология», «кофейня»). Не вставляй в niche целое "
+            "сообщение пользователя дословно. Извлеки СУТЬ.\n"
+            "- region — конкретный город или регион (например "
+            '"Stamford, Connecticut" или "Berlin"). Не «вся Европа», '
+            "не «вся Америка» — это слишком абстрактно для Google Maps. "
+            "Если пользователь даёт большой охват — переспроси конкретный "
+            "город для старта.\n"
+            "- НИКОГДА не клади в niche текст-ответ на вопрос про регион "
+            "(или наоборот). Когда сомневаешься — оставь поле как есть "
+            "в текущем состоянии формы.\n\n"
             "Правила диалога:\n"
             "- Веди себя как опытный консультант, не как форма. Задавай "
             "по одному уточняющему вопросу за раз, реагируй на ответы.\n"
@@ -1077,16 +1127,21 @@ class AIAnalyzer:
             "клиента (размер, ценовой сегмент, на что обратить внимание) "
             "или про исключения. Когда деталей хватает, кратко резюмируй "
             "и предложи запустить поиск.\n"
-            "- ready=true ставишь только когда есть И ниша, И регион. "
+            "- ready=true ставишь только когда есть И ниша, И регион "
+            "(конкретный город/регион, не размытый континент). "
             "ideal_customer и exclusions — приветствуются, но не "
             "обязательны.\n\n"
-            "Формат ответа — СТРОГО JSON, без префиксов и markdown:\n"
+            "Формат ответа — СТРОГО JSON, без префиксов и markdown.\n"
+            "Возвращай ВСЕ четыре слота на каждом ходу: если поле уже "
+            "было заполнено в текущем состоянии и пользователь его не "
+            "трогал — повтори то же значение, не ставь null.\n"
             '{"reply": "…", "niche": "…|null", "region": "…|null", '
             '"ideal_customer": "…|null", "exclusions": "…|null", '
             '"ready": true|false}'
         )
+        system += state_block
         if profile_block:
-            system += "\n\nПрофиль продавца, под которого подбираем лидов:\n"
+            system += "\nПрофиль продавца, под которого подбираем лидов:\n"
             system += profile_block
 
         try:
@@ -1103,16 +1158,29 @@ class AIAnalyzer:
             logger.exception("consult_search failed")
             return _heuristic_consult(clean_history)
 
+        # Belt-and-braces: never let a turn drop a slot the user
+        # already confirmed. Even with the explicit prompt rule above,
+        # Claude occasionally returns null on a settled field — we
+        # carry the previous value forward instead of clearing it.
+        next_niche = _trim_or_none(data.get("niche")) or carried_niche
+        next_region = _trim_or_none(data.get("region")) or carried_region
+        next_ideal = (
+            _trim_or_none(data.get("ideal_customer")) or carried_ideal
+        )
+        next_exclusions = (
+            _trim_or_none(data.get("exclusions")) or carried_exclusions
+        )
+
         return {
             "reply": str(data.get("reply") or "").strip()
             or "Расскажите подробнее — какая ниша и в каком городе?",
-            "niche": _trim_or_none(data.get("niche")),
-            "region": _trim_or_none(data.get("region")),
-            "ideal_customer": _trim_or_none(data.get("ideal_customer")),
-            "exclusions": _trim_or_none(data.get("exclusions")),
+            "niche": next_niche,
+            "region": next_region,
+            "ideal_customer": next_ideal,
+            "exclusions": next_exclusions,
             "ready": bool(data.get("ready"))
-            and bool(_trim_or_none(data.get("niche")))
-            and bool(_trim_or_none(data.get("region"))),
+            and bool(next_niche)
+            and bool(next_region),
         }
 
     async def assistant_chat(
