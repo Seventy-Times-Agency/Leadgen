@@ -265,9 +265,13 @@ const TRANSLATIONS = {
     "detail.stat.warm": "тёплых",
     "detail.stat.cold": "холодных",
     "detail.insights.eyebrow": "AI-инсайт рынка",
-    "detail.working.title": "AI всё ещё анализирует лидов",
-    "detail.working.body":
-      "Парсер уже собрал компании. Сейчас Claude посещает их сайты, читает отзывы и оценивает каждого под ваш профиль. Готово {done} из {total} — страница обновится сама.",
+    "detail.loader.title": "Готовим вашу подборку",
+    "detail.loader.subtitle":
+      "Собираем компании, проходим по сайтам и отзывам, и оцениваем каждого лида под ваш профиль. Обычно это 60–120 секунд — страница откроется сама.",
+    "detail.loader.phase.pending": "Запускаем пайплайн",
+    "detail.loader.phase.discovering": "Ищем компании в Google Places",
+    "detail.loader.phase.enriching": "Обогащаем сайтами и отзывами",
+    "detail.loader.phase.scoring": "Claude оценивает каждого лида",
     "detail.filter.all": "Все · {n}",
     "detail.filter.hot": "Горячие · {n}",
     "detail.filter.warm": "Тёплые · {n}",
@@ -586,9 +590,13 @@ const TRANSLATIONS = {
     "detail.stat.warm": "warm",
     "detail.stat.cold": "cold",
     "detail.insights.eyebrow": "AI market insight",
-    "detail.working.title": "AI is still scoring your leads",
-    "detail.working.body":
-      "The parser already pulled the companies. Claude is visiting each site, reading reviews and scoring them against your profile. {done} of {total} done — this page refreshes on its own.",
+    "detail.loader.title": "Preparing your list",
+    "detail.loader.subtitle":
+      "We pull the companies, visit each site and review feed, then score every lead against your profile. Usually 60–120 seconds — this page opens on its own.",
+    "detail.loader.phase.pending": "Booting the pipeline",
+    "detail.loader.phase.discovering": "Finding companies on Google Places",
+    "detail.loader.phase.enriching": "Enriching with sites and reviews",
+    "detail.loader.phase.scoring": "Claude is scoring each lead",
     "detail.filter.all": "All · {n}",
     "detail.filter.hot": "Hot · {n}",
     "detail.filter.warm": "Warm · {n}",
