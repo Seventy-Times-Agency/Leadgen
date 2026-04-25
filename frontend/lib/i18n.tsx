@@ -194,7 +194,7 @@ const TRANSLATIONS = {
     "dashboard.quick.title": "Быстрые действия",
     "dashboard.quick.launch.title": "Запустить новый поиск",
     "dashboard.quick.launch.body":
-      "Опишите целевую нишу и регион. Lumen возьмёт остальное на себя.",
+      "Опишите целевую нишу и регион. Henry возьмёт остальное на себя.",
     "dashboard.quick.leads.title": "Открыть базу лидов",
     "dashboard.quick.leads.body":
       "Ищите, фильтруйте и ведите каждого собранного лида.",
@@ -214,10 +214,10 @@ const TRANSLATIONS = {
     "search.crumb.running": "Поиск выполняется",
     "search.crumb.done": "Поиск завершён",
     "search.chat.greeting":
-      "Привет — я Lumen, ваш AI-ассистент по лидам. Опишите кого ищете, и я соберу список за ~90 секунд.",
+      "Привет — я Henry, ваш AI-ассистент по лидам. Опишите кого ищете, и я соберу список за ~90 секунд.",
     "search.consult.greeting":
-      "Привет, я Lumen. Расскажите кого ищете: какая ниша, в каком городе, и что для вас идеальный лид. Я буду уточнять по ходу и сразу заполню форму справа.",
-    "search.consult.placeholder": "Напишите Lumen...",
+      "Привет, я Henry. Расскажите кого ищете: какая ниша, в каком городе, и что для вас идеальный лид. Я буду уточнять по ходу и сразу заполню форму справа.",
+    "search.consult.placeholder": "Напишите Henry...",
     "search.consult.role": "AI-консультант по подбору лидов",
     "search.consult.thinking": "Думаю над ответом...",
     "search.consult.error":
@@ -243,7 +243,7 @@ const TRANSLATIONS = {
     "search.prompts.3": "Стоматологические клиники в Лондоне",
     "search.form.eyebrow": "Параметры поиска",
     "search.form.title": "Или заполните вручную",
-    "search.form.subtitle": "Lumen дозаполнит поля по ходу диалога.",
+    "search.form.subtitle": "Henry дозаполнит поля по ходу диалога.",
     "search.form.niche": "Ниша",
     "search.form.nichePh": "кровельные компании",
     "search.form.region": "Регион",
@@ -589,7 +589,7 @@ const TRANSLATIONS = {
     "dashboard.quick.title": "Quick actions",
     "dashboard.quick.launch.title": "Launch a new search",
     "dashboard.quick.launch.body":
-      "Describe your target niche and region. Lumen will handle the rest.",
+      "Describe your target niche and region. Henry will handle the rest.",
     "dashboard.quick.leads.title": "Open the lead base",
     "dashboard.quick.leads.body":
       "Search, filter and organize every lead you've collected.",
@@ -607,10 +607,10 @@ const TRANSLATIONS = {
     "search.crumb.running": "Search in progress",
     "search.crumb.done": "Search complete",
     "search.chat.greeting":
-      "Hi — I'm Lumen, your Leadgen copilot. Tell me who you're looking for and I'll build you a list in ~90 seconds.",
+      "Hi — I'm Henry, your Leadgen copilot. Tell me who you're looking for and I'll build you a list in ~90 seconds.",
     "search.consult.greeting":
-      "Hi, I'm Lumen. Tell me who you're after — niche, city, and what makes an ideal lead. I'll ask follow-ups and fill in the form on the right as we go.",
-    "search.consult.placeholder": "Message Lumen...",
+      "Hi, I'm Henry. Tell me who you're after — niche, city, and what makes an ideal lead. I'll ask follow-ups and fill in the form on the right as we go.",
+    "search.consult.placeholder": "Message Henry...",
     "search.consult.role": "AI lead-gen consultant",
     "search.consult.thinking": "Thinking...",
     "search.consult.error":
@@ -636,7 +636,7 @@ const TRANSLATIONS = {
     "search.prompts.3": "Orthodontic clinics in London",
     "search.form.eyebrow": "Search parameters",
     "search.form.title": "Or set it manually",
-    "search.form.subtitle": "Lumen auto-fills these as you chat.",
+    "search.form.subtitle": "Henry auto-fills these as you chat.",
     "search.form.niche": "Niche",
     "search.form.nichePh": "roofing companies",
     "search.form.region": "Region",

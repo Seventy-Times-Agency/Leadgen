@@ -11,6 +11,11 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Icon, type IconName } from "@/components/Icon";
+
+/** Avatar shown for the consultant in the chat. Drop the photo at
+ *  frontend/public/henry.jpg and it'll be picked up automatically;
+ *  if missing, the gradient initials fallback renders. */
+const HENRY_AVATAR_URL = "/henry.jpg";
 import {
   ApiError,
   consultSearch,
@@ -50,7 +55,7 @@ function NewSearchInner() {
   const [exclusions, setExclusions] = useState("");
   const [profession, setProfession] = useState("");
 
-  // Marks which fields were last filled by Lumen (vs by the user). Used
+  // Marks which fields were last filled by Henry (vs by the user). Used
   // to highlight the change so the user can see what the AI extracted.
   const [aiTouched, setAiTouched] = useState<Record<string, number>>({});
   const markAiTouched = (field: string) =>
@@ -75,7 +80,7 @@ function NewSearchInner() {
     }
   }, [messages, thinking]);
 
-  const sendToLumen = async (text: string) => {
+  const sendToHenry = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || thinking) return;
     setDraft("");
@@ -94,7 +99,7 @@ function NewSearchInner() {
       );
 
       // Update extracted fields. Don't clobber values the user typed
-      // if Lumen returns null for that slot.
+      // if Henry returns null for that slot.
       if (reply.niche) {
         setNiche(reply.niche);
         markAiTouched("niche");
@@ -191,8 +196,8 @@ function NewSearchInner() {
           thinking={thinking}
           draft={draft}
           onDraftChange={setDraft}
-          onSubmit={() => sendToLumen(draft)}
-          onPickPrompt={(key) => sendToLumen(t(key))}
+          onSubmit={() => sendToHenry(draft)}
+          onPickPrompt={(key) => sendToHenry(t(key))}
           chatRef={chatRef}
         />
 
@@ -263,22 +268,9 @@ function ChatColumn({
             "linear-gradient(135deg, color-mix(in srgb, var(--accent) 6%, var(--surface)), var(--surface))",
         }}
       >
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
-            background: "linear-gradient(135deg, var(--accent), #EC4899)",
-            display: "grid",
-            placeItems: "center",
-            color: "white",
-            flexShrink: 0,
-          }}
-        >
-          <Icon name="sparkles" size={18} />
-        </div>
+        <HenryAvatar size={40} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>Lumen</div>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>Henry</div>
           <div
             style={{
               fontSize: 11,
@@ -382,6 +374,48 @@ function ChatColumn({
   );
 }
 
+function HenryAvatar({ size }: { size: number }) {
+  const [broken, setBroken] = useState(false);
+  if (broken || !HENRY_AVATAR_URL) {
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          background: "linear-gradient(135deg, #1E3A8A, #3B82F6)",
+          display: "grid",
+          placeItems: "center",
+          color: "white",
+          fontSize: Math.round(size * 0.42),
+          fontWeight: 700,
+          letterSpacing: "-0.02em",
+          flexShrink: 0,
+        }}
+      >
+        H
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={HENRY_AVATAR_URL}
+      alt="Henry"
+      width={size}
+      height={size}
+      onError={() => setBroken(true)}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        objectFit: "cover",
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
 function ChatBubble({ msg }: { msg: ChatMsg }) {
   const isBot = msg.role === "assistant";
   return (
@@ -394,20 +428,7 @@ function ChatBubble({ msg }: { msg: ChatMsg }) {
       }}
     >
       {isBot ? (
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: "50%",
-            background: "linear-gradient(135deg, var(--accent), #EC4899)",
-            display: "grid",
-            placeItems: "center",
-            color: "white",
-            flexShrink: 0,
-          }}
-        >
-          <Icon name="sparkles" size={13} />
-        </div>
+        <HenryAvatar size={28} />
       ) : (
         <div
           className="avatar avatar-sm"
@@ -440,20 +461,7 @@ function ChatBubble({ msg }: { msg: ChatMsg }) {
 function ThinkingBubble() {
   return (
     <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-      <div
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: "50%",
-          background: "linear-gradient(135deg, var(--accent), #EC4899)",
-          display: "grid",
-          placeItems: "center",
-          color: "white",
-          flexShrink: 0,
-        }}
-      >
-        <Icon name="sparkles" size={13} />
-      </div>
+      <HenryAvatar size={28} />
       <div
         style={{
           padding: "10px 14px",
