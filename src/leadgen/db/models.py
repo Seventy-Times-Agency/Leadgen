@@ -211,6 +211,7 @@ class Team(Base):
         _UUID(), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
     plan: Mapped[str] = mapped_column(String(32), default="free", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
@@ -255,6 +256,7 @@ class TeamMembership(Base):
         nullable=False,
     )
     role: Mapped[str] = mapped_column(String(32), default="member", nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -302,6 +304,34 @@ class TeamInvite(Base):
     )
     accepted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+class TeamSeenLead(Base):
+    """Per-team fingerprint of every (source, source_id) ever returned.
+
+    Mirrors ``UserSeenLead`` but at team granularity: when a search
+    runs in team mode, the pipeline filters Google Maps results
+    against this table so the same place never appears in two
+    teammates' CRMs. ``first_user_id`` and ``first_seen_at`` record
+    who claimed the lead first, useful for the "already in team"
+    breadcrumb on the UI.
+    """
+
+    __tablename__ = "team_seen_leads"
+
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    source: Mapped[str] = mapped_column(String(32), primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    first_user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
     )
 
 

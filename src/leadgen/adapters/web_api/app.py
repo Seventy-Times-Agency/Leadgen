@@ -50,15 +50,19 @@ from leadgen.adapters.web_api.schemas import (
     LeadResponse,
     LeadUpdate,
     LoginRequest,
+    MembershipUpdateRequest,
+    PriorTeamSearch,
     RegisterRequest,
     SearchCreate,
     SearchCreateResponse,
+    SearchPreflightResponse,
     SearchSummary,
     TeamCreateRequest,
     TeamDetailResponse,
     TeamMemberResponse,
     TeamMemberSummary,
     TeamSummary,
+    TeamUpdateRequest,
     UserProfile,
     UserProfileUpdate,
 )
@@ -74,6 +78,7 @@ from leadgen.db.models import (
     Team,
     TeamInvite,
     TeamMembership,
+    TeamSeenLead,
     User,
 )
 from leadgen.db.session import _get_engine, session_factory
@@ -340,6 +345,82 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=404, detail="team not found")
             return await _team_detail(session, team, user_id)
 
+    @app.patch("/api/v1/teams/{team_id}", response_model=TeamDetailResponse)
+    async def update_team(
+        team_id: uuid.UUID, body: TeamUpdateRequest
+    ) -> TeamDetailResponse:
+        """Owner-only PATCH for the team's name + description."""
+        async with session_factory() as session:
+            team = await session.get(Team, team_id)
+            if team is None:
+                raise HTTPException(status_code=404, detail="team not found")
+            membership = await _membership(session, team_id, body.by_user_id)
+            if membership is None or membership.role != "owner":
+                raise HTTPException(
+                    status_code=403,
+                    detail="only the team owner can edit the team",
+                )
+
+            data = body.model_dump(exclude_unset=True)
+            if "name" in data and data["name"] is not None:
+                trimmed = data["name"].strip()
+                if trimmed:
+                    team.name = trimmed
+            if "description" in data:
+                desc = (data["description"] or "").strip()
+                team.description = desc or None
+
+            await session.commit()
+            await session.refresh(team)
+            return await _team_detail(session, team, body.by_user_id)
+
+    @app.patch(
+        "/api/v1/teams/{team_id}/members/{member_user_id}",
+        response_model=TeamDetailResponse,
+    )
+    async def update_member(
+        team_id: uuid.UUID,
+        member_user_id: int,
+        body: MembershipUpdateRequest,
+    ) -> TeamDetailResponse:
+        """Owner-only PATCH of a teammate's per-team description / role."""
+        async with session_factory() as session:
+            team = await session.get(Team, team_id)
+            if team is None:
+                raise HTTPException(status_code=404, detail="team not found")
+            caller = await _membership(session, team_id, body.by_user_id)
+            if caller is None or caller.role != "owner":
+                raise HTTPException(
+                    status_code=403,
+                    detail="only the team owner can edit members",
+                )
+            target = await _membership(session, team_id, member_user_id)
+            if target is None:
+                raise HTTPException(
+                    status_code=404, detail="that user isn't a team member"
+                )
+
+            data = body.model_dump(exclude_unset=True)
+            if "description" in data:
+                desc = (data["description"] or "").strip()
+                target.description = desc or None
+            if "role" in data and data["role"]:
+                # Don't let an owner accidentally demote themselves into
+                # an ownerless team — re-promotion would need DB access.
+                role_value = data["role"].strip()
+                if (
+                    target.user_id == body.by_user_id
+                    and role_value != "owner"
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="owners can't demote themselves",
+                    )
+                target.role = role_value
+
+            await session.commit()
+            return await _team_detail(session, team, body.by_user_id)
+
     @app.post("/api/v1/teams/{team_id}/invites", response_model=InviteResponse)
     async def create_invite(
         team_id: uuid.UUID, body: InviteCreateRequest
@@ -462,12 +543,60 @@ def create_app() -> FastAPI:
 
     @app.post("/api/v1/assistant/chat", response_model=AssistantResponse)
     async def assistant_chat(body: AssistantRequest) -> AssistantResponse:
-        """Floating in-product assistant. Same Henry persona,
-        product-help scope. May propose a ``profile_suggestion`` the
-        user can apply with one click.
+        """Floating in-product assistant.
+
+        Personal mode (no team_id): Henry helps with profile + product Q&A.
+        Team mode (team_id set): Henry knows the team description + the
+        full member roster with their descriptions, helps the caller
+        work inside the team. Owners additionally get team / per-member
+        description suggestions.
         """
         async with session_factory() as session:
             user = await session.get(User, body.user_id)
+
+            team_context: dict[str, Any] | None = None
+            if body.team_id is not None:
+                team = await session.get(Team, body.team_id)
+                if team is None:
+                    raise HTTPException(status_code=404, detail="team not found")
+                membership = await _membership(
+                    session, body.team_id, body.user_id
+                )
+                if membership is None:
+                    raise HTTPException(
+                        status_code=403, detail="not a team member"
+                    )
+                rows = (
+                    await session.execute(
+                        select(TeamMembership, User)
+                        .join(User, User.id == TeamMembership.user_id)
+                        .where(TeamMembership.team_id == body.team_id)
+                        .order_by(TeamMembership.created_at)
+                    )
+                ).all()
+                members_payload: list[dict[str, Any]] = []
+                for m, u in rows:
+                    display = (
+                        u.display_name
+                        or " ".join(filter(None, [u.first_name, u.last_name]))
+                        or f"User {u.id}"
+                    )
+                    members_payload.append(
+                        {
+                            "user_id": u.id,
+                            "name": display,
+                            "role": m.role,
+                            "description": m.description,
+                        }
+                    )
+                team_context = {
+                    "team_id": str(team.id),
+                    "name": team.name,
+                    "description": team.description,
+                    "is_owner": membership.role == "owner",
+                    "viewer_user_id": body.user_id,
+                    "members": members_payload,
+                }
 
         user_profile: dict[str, Any] = {}
         if user is not None:
@@ -484,21 +613,69 @@ def create_app() -> FastAPI:
 
         history = [m.model_dump() for m in body.messages]
         analyzer = AIAnalyzer()
-        result = await analyzer.assistant_chat(history, user_profile or None)
+        result = await analyzer.assistant_chat(
+            history,
+            user_profile or None,
+            team_context=team_context,
+        )
 
-        suggestion_dict = result.get("profile_suggestion")
-        suggestion = (
-            AssistantProfileSuggestion(**suggestion_dict)
-            if isinstance(suggestion_dict, dict)
+        profile_suggestion = (
+            AssistantProfileSuggestion(**result["profile_suggestion"])
+            if isinstance(result.get("profile_suggestion"), dict)
             else None
         )
+        team_suggestion = None
+        if isinstance(result.get("team_suggestion"), dict):
+            from leadgen.adapters.web_api.schemas import (
+                AssistantMemberDescription,
+                AssistantTeamSuggestion,
+            )
+
+            ts = result["team_suggestion"]
+            team_suggestion = AssistantTeamSuggestion(
+                description=ts.get("description"),
+                member_descriptions=[
+                    AssistantMemberDescription(**md)
+                    for md in (ts.get("member_descriptions") or [])
+                ]
+                or None,
+            )
+
         return AssistantResponse(
             reply=result.get("reply", ""),
-            profile_suggestion=suggestion,
+            mode=result.get("mode", "personal"),
+            profile_suggestion=profile_suggestion,
+            team_suggestion=team_suggestion,
             suggestion_summary=result.get("suggestion_summary"),
         )
 
     # ── /api/v1/searches ───────────────────────────────────────────────
+
+    @app.get(
+        "/api/v1/searches/preflight",
+        response_model=SearchPreflightResponse,
+    )
+    async def search_preflight(
+        user_id: int,
+        niche: str,
+        region: str,
+        team_id: uuid.UUID | None = None,
+    ) -> SearchPreflightResponse:
+        """Tell the UI whether this niche+region combo is safe to run.
+
+        In personal mode it's always safe (no cross-user collision
+        rule). In team mode the same combo is hard-blocked — return
+        the prior matches so the UI can show "already done by Иван"
+        instead of letting the user click Launch.
+        """
+        if team_id is None:
+            return SearchPreflightResponse(blocked=False, matches=[])
+        async with session_factory() as session:
+            membership = await _membership(session, team_id, user_id)
+            if membership is None:
+                raise HTTPException(status_code=403, detail="not a team member")
+            matches = await _team_prior_searches(session, team_id, niche, region)
+        return SearchPreflightResponse(blocked=bool(matches), matches=matches)
 
     @app.post("/api/v1/searches", response_model=SearchCreateResponse)
     async def create_search(body: SearchCreate) -> SearchCreateResponse:
@@ -529,6 +706,21 @@ def create_app() -> FastAPI:
                     raise HTTPException(
                         status_code=403,
                         detail="user is not a member of this team",
+                    )
+                prior = await _team_prior_searches(
+                    session, team_id, body.niche, body.region
+                )
+                if prior:
+                    first = prior[0]
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=(
+                            f"This niche+region was already searched in this "
+                            f"team by {first.user_name} on "
+                            f"{first.created_at:%Y-%m-%d} "
+                            f"({first.leads_count} leads). Pick a different "
+                            f"angle so two members don't chase the same companies."
+                        ),
                     )
 
             query = SearchQuery(
@@ -1131,6 +1323,54 @@ async def _resolve_team_view(
     return member_user_id
 
 
+async def _team_prior_searches(
+    session,
+    team_id: uuid.UUID,
+    niche: str,
+    region: str,
+) -> list[PriorTeamSearch]:
+    """Return earlier completed searches in this team that already
+    used the same (niche, region) pair, normalised case-insensitively
+    and trimmed. Empty list = combo is fresh, OK to launch.
+    """
+    n = (niche or "").strip().lower()
+    r = (region or "").strip().lower()
+    if not n or not r:
+        return []
+
+    rows = (
+        await session.execute(
+            select(SearchQuery, User)
+            .join(User, User.id == SearchQuery.user_id)
+            .where(SearchQuery.team_id == team_id)
+            .where(func.lower(func.trim(SearchQuery.niche)) == n)
+            .where(func.lower(func.trim(SearchQuery.region)) == r)
+            .where(SearchQuery.status.in_(["running", "done", "pending"]))
+            .order_by(SearchQuery.created_at.desc())
+        )
+    ).all()
+
+    out: list[PriorTeamSearch] = []
+    for sq, user in rows:
+        display = (
+            user.display_name
+            or " ".join(filter(None, [user.first_name, user.last_name]))
+            or f"User {user.id}"
+        )
+        out.append(
+            PriorTeamSearch(
+                search_id=sq.id,
+                user_id=sq.user_id,
+                user_name=display,
+                niche=sq.niche,
+                region=sq.region,
+                leads_count=sq.leads_count,
+                created_at=sq.created_at,
+            )
+        )
+    return out
+
+
 async def _membership(
     session, team_id: uuid.UUID, user_id: int
 ) -> TeamMembership | None:
@@ -1176,6 +1416,7 @@ async def _team_detail(
                 id=user.id,
                 name=display,
                 role=m.role,
+                description=m.description,
                 initials=initials,
                 color=_DEMO_TEAM_COLORS[i % len(_DEMO_TEAM_COLORS)],
                 email=None,
@@ -1185,6 +1426,7 @@ async def _team_detail(
     return TeamDetailResponse(
         id=team.id,
         name=team.name,
+        description=team.description,
         plan=team.plan,
         created_at=team.created_at,
         role=membership.role,

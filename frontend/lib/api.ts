@@ -143,6 +143,7 @@ export interface TeamMember {
   id: number;
   name: string;
   role: string;
+  description: string | null;
   initials: string;
   color: string;
   email: string | null;
@@ -186,6 +187,7 @@ export interface TeamSummary {
 export interface TeamDetail {
   id: string;
   name: string;
+  description: string | null;
   plan: string;
   created_at: string;
   role: string;
@@ -334,19 +336,93 @@ export interface AssistantProfileSuggestion {
   niches?: string[] | null;
 }
 
+export interface AssistantMemberDescription {
+  user_id: number;
+  description: string;
+}
+
+export interface AssistantTeamSuggestion {
+  description?: string | null;
+  member_descriptions?: AssistantMemberDescription[] | null;
+}
+
+export type AssistantMode = "personal" | "team_member" | "team_owner";
+
 export interface AssistantResponse {
   reply: string;
+  mode: AssistantMode;
   profile_suggestion: AssistantProfileSuggestion | null;
+  team_suggestion: AssistantTeamSuggestion | null;
   suggestion_summary: string | null;
 }
 
 export async function assistantChat(
   messages: ConsultMessage[],
+  opts: { teamId?: string } = {},
 ): Promise<AssistantResponse> {
   return request<AssistantResponse>("/api/v1/assistant/chat", {
     method: "POST",
-    body: JSON.stringify({ user_id: requireUserId(), messages }),
+    body: JSON.stringify({
+      user_id: requireUserId(),
+      team_id: opts.teamId,
+      messages,
+    }),
   });
+}
+
+export async function updateTeam(
+  teamId: string,
+  patch: { name?: string; description?: string | null },
+): Promise<TeamDetail> {
+  return request<TeamDetail>(`/api/v1/teams/${teamId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ by_user_id: requireUserId(), ...patch }),
+  });
+}
+
+export async function updateTeamMember(
+  teamId: string,
+  memberUserId: number,
+  patch: { description?: string | null; role?: string },
+): Promise<TeamDetail> {
+  return request<TeamDetail>(
+    `/api/v1/teams/${teamId}/members/${memberUserId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ by_user_id: requireUserId(), ...patch }),
+    },
+  );
+}
+
+export interface PriorTeamSearch {
+  search_id: string;
+  user_id: number;
+  user_name: string;
+  niche: string;
+  region: string;
+  leads_count: number;
+  created_at: string;
+}
+
+export interface SearchPreflightResponse {
+  blocked: boolean;
+  matches: PriorTeamSearch[];
+}
+
+export async function preflightSearch(args: {
+  niche: string;
+  region: string;
+  teamId?: string;
+}): Promise<SearchPreflightResponse> {
+  const params = new URLSearchParams({
+    user_id: String(requireUserId()),
+    niche: args.niche,
+    region: args.region,
+  });
+  if (args.teamId) params.set("team_id", args.teamId);
+  return request<SearchPreflightResponse>(
+    `/api/v1/searches/preflight?${params.toString()}`,
+  );
 }
 
 export async function createSearch(

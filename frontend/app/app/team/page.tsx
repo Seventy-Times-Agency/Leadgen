@@ -11,8 +11,11 @@ import {
   getTeamDetail,
   getTeamMembersSummary,
   listMyTeams,
+  updateTeam,
+  updateTeamMember,
   type InviteResponse,
   type TeamDetail,
+  type TeamMember,
   type TeamMemberSummary,
   type TeamSummary,
 } from "@/lib/api";
@@ -132,7 +135,7 @@ export default function TeamPage() {
           </>
         )}
 
-        {detail && <TeamDetailBlock detail={detail} />}
+        {detail && <TeamDetailBlock detail={detail} onRefresh={refresh} />}
       </div>
     </>
   );
@@ -317,7 +320,13 @@ function TeamSwitcher({
   );
 }
 
-function TeamDetailBlock({ detail }: { detail: TeamDetail }) {
+function TeamDetailBlock({
+  detail,
+  onRefresh,
+}: {
+  detail: TeamDetail;
+  onRefresh: () => void;
+}) {
   const { t } = useLocale();
   const isOwner = detail.role === "owner";
 
@@ -341,32 +350,25 @@ function TeamDetailBlock({ detail }: { detail: TeamDetail }) {
           <div className="chip">{detail.role}</div>
         </div>
 
-        <div className="eyebrow" style={{ marginBottom: 10 }}>
+        <TeamDescriptionBlock
+          teamId={detail.id}
+          isOwner={isOwner}
+          description={detail.description}
+          onSaved={onRefresh}
+        />
+
+        <div className="eyebrow" style={{ marginTop: 18, marginBottom: 10 }}>
           {t("team.detail.members", { n: detail.members.length })}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {detail.members.map((m) => (
-            <div
+            <MemberRow
               key={m.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "10px 12px",
-                background: "var(--surface-2)",
-                borderRadius: 10,
-              }}
-            >
-              <div className="avatar" style={{ background: m.color }}>
-                {m.initials}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{m.name}</div>
-              </div>
-              <span className="chip" style={{ fontSize: 11 }}>
-                {m.role}
-              </span>
-            </div>
+              teamId={detail.id}
+              member={m}
+              isOwner={isOwner}
+              onSaved={onRefresh}
+            />
           ))}
         </div>
       </div>
@@ -374,6 +376,249 @@ function TeamDetailBlock({ detail }: { detail: TeamDetail }) {
       {isOwner && <OwnerMembersBlock teamId={detail.id} />}
       {isOwner && <InviteBlock teamId={detail.id} />}
     </>
+  );
+}
+
+function TeamDescriptionBlock({
+  teamId,
+  isOwner,
+  description,
+  onSaved,
+}: {
+  teamId: string;
+  isOwner: boolean;
+  description: string | null;
+  onSaved: () => void;
+}) {
+  const { t } = useLocale();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(description ?? "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraft(description ?? "");
+  }, [description]);
+
+  const save = async () => {
+    setSaving(true);
+    setErr(null);
+    try {
+      await updateTeam(teamId, { description: draft.trim() || null });
+      setEditing(false);
+      onSaved();
+    } catch (e) {
+      setErr(toMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div
+        className="eyebrow"
+        style={{
+          marginBottom: 6,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <span>{t("team.descriptionLabel")}</span>
+        {isOwner && !editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              color: "var(--accent)",
+              fontSize: 11,
+            }}
+          >
+            <Icon name="pencil" size={11} /> {t("common.edit")}
+          </button>
+        )}
+      </div>
+
+      {!editing && (
+        <div
+          style={{
+            fontSize: 13.5,
+            color: description ? "var(--text)" : "var(--text-dim)",
+            lineHeight: 1.55,
+          }}
+        >
+          {description || t("team.descriptionEmpty")}
+        </div>
+      )}
+
+      {editing && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <textarea
+            className="textarea"
+            rows={3}
+            value={draft}
+            maxLength={500}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={t("team.descriptionPh")}
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={saving}
+              onClick={save}
+            >
+              {saving ? t("common.loading") : t("common.save")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setDraft(description ?? "");
+                setEditing(false);
+                setErr(null);
+              }}
+            >
+              {t("common.cancel")}
+            </button>
+            {err && (
+              <div style={{ fontSize: 12, color: "var(--cold)", alignSelf: "center" }}>
+                {err}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MemberRow({
+  teamId,
+  member,
+  isOwner,
+  onSaved,
+}: {
+  teamId: string;
+  member: TeamMember;
+  isOwner: boolean;
+  onSaved: () => void;
+}) {
+  const { t } = useLocale();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(member.description ?? "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setErr(null);
+    try {
+      await updateTeamMember(teamId, member.id, {
+        description: draft.trim() || null,
+      });
+      setEditing(false);
+      onSaved();
+    } catch (e) {
+      setErr(toMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        background: "var(--surface-2)",
+        borderRadius: 10,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="avatar" style={{ background: member.color }}>
+          {member.initials}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{member.name}</div>
+          {!editing && member.description && (
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--text-muted)",
+                marginTop: 2,
+                lineHeight: 1.45,
+              }}
+            >
+              {member.description}
+            </div>
+          )}
+          {!editing && !member.description && isOwner && (
+            <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
+              {t("team.member.descriptionEmpty")}
+            </div>
+          )}
+        </div>
+        <span className="chip" style={{ fontSize: 11 }}>
+          {member.role}
+        </span>
+        {isOwner && !editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="btn-icon"
+            title={t("common.edit")}
+          >
+            <Icon name="pencil" size={13} />
+          </button>
+        )}
+      </div>
+      {editing && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <textarea
+            className="textarea"
+            rows={2}
+            value={draft}
+            maxLength={300}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={t("team.member.descriptionPh")}
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={saving}
+              onClick={save}
+            >
+              {saving ? t("common.loading") : t("common.save")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setDraft(member.description ?? "");
+                setEditing(false);
+                setErr(null);
+              }}
+            >
+              {t("common.cancel")}
+            </button>
+            {err && (
+              <div style={{ fontSize: 12, color: "var(--cold)", alignSelf: "center" }}>
+                {err}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

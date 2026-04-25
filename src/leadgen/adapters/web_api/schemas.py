@@ -118,20 +118,20 @@ class ConsultResponse(BaseModel):
 
 
 class AssistantRequest(BaseModel):
-    """One round-trip of the floating in-product assistant chat."""
+    """One round-trip of the floating in-product assistant chat.
+
+    ``team_id`` flips Henry into team-context mode: he gets the team
+    description + per-member descriptions in his system prompt and
+    drops the personal-profile-edit ability.
+    """
 
     user_id: int
+    team_id: uuid.UUID | None = None
     messages: list[ConsultMessage] = Field(default_factory=list, max_length=40)
 
 
 class AssistantProfileSuggestion(BaseModel):
-    """Profile fields Henry proposes to update.
-
-    All fields are optional; only the ones the user actually agreed to
-    in the conversation come back populated. The frontend renders
-    these as a card with an explicit Apply button so nothing is
-    written without confirmation.
-    """
+    """Profile fields Henry proposes to update — personal mode only."""
 
     display_name: str | None = None
     age_range: str | None = None
@@ -141,10 +141,32 @@ class AssistantProfileSuggestion(BaseModel):
     niches: list[str] | None = None
 
 
+class AssistantTeamSuggestion(BaseModel):
+    """Team-level changes Henry proposes — owner team-mode only.
+
+    ``description`` updates the team's purpose statement;
+    ``member_descriptions`` is a list of per-member notes the owner
+    can apply with one click.
+    """
+
+    description: str | None = None
+    member_descriptions: list["AssistantMemberDescription"] | None = None
+
+
+class AssistantMemberDescription(BaseModel):
+    user_id: int
+    description: str
+
+
 class AssistantResponse(BaseModel):
     reply: str
+    mode: str = "personal"  # personal | team_member | team_owner
     profile_suggestion: AssistantProfileSuggestion | None = None
+    team_suggestion: AssistantTeamSuggestion | None = None
     suggestion_summary: str | None = None
+
+
+AssistantTeamSuggestion.model_rebuild()
 
 
 class SearchCreate(BaseModel):
@@ -303,6 +325,7 @@ class TeamMemberResponse(BaseModel):
     id: int
     name: str
     role: str
+    description: str | None = None
     initials: str
     color: str
     email: str | None = None
@@ -328,10 +351,50 @@ class TeamCreateRequest(BaseModel):
 class TeamDetailResponse(BaseModel):
     id: uuid.UUID
     name: str
+    description: str | None = None
     plan: str
     created_at: datetime
     role: str  # the caller's role on this team
     members: list[TeamMemberResponse]
+
+
+class TeamUpdateRequest(BaseModel):
+    """Owner-only PATCH for the team's editable fields."""
+
+    by_user_id: int
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class MembershipUpdateRequest(BaseModel):
+    """Owner-only PATCH for one teammate's description / role.
+
+    Sets the short note Henry uses to introduce the member to the
+    rest of the team ("Анна — закрывает стоматологии в EU").
+    """
+
+    by_user_id: int
+    description: str | None = Field(default=None, max_length=1000)
+    role: str | None = Field(default=None, max_length=32)
+
+
+class PriorTeamSearch(BaseModel):
+    """One earlier search in this team that already covered the
+    same niche+region — surfaced by the preflight endpoint so the
+    UI can hard-block a duplicate run."""
+
+    search_id: uuid.UUID
+    user_id: int
+    user_name: str
+    niche: str
+    region: str
+    leads_count: int
+    created_at: datetime
+
+
+class SearchPreflightResponse(BaseModel):
+    blocked: bool
+    matches: list[PriorTeamSearch] = Field(default_factory=list)
 
 
 class InviteCreateRequest(BaseModel):

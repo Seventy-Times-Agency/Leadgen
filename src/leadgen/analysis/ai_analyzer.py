@@ -307,6 +307,209 @@ def _trim_or_none(value: Any) -> str | None:
     return text
 
 
+_PROFILE_FIELDS_BLOCK = (
+    "Поля профиля, которыми ты можешь предлагать изменения:\n"
+    "- display_name (string)\n"
+    "- age_range (одно из: <18, 18-24, 25-34, 35-44, 45-54, 55+)\n"
+    "- business_size (одно из: solo, small, medium, large)\n"
+    "- service_description (свободный текст что продаёт)\n"
+    "- home_region (string)\n"
+    "- niches (массив строк, 1-7 штук)"
+)
+
+
+def _assistant_personal_system_prompt(
+    user_profile: dict[str, Any] | None,
+) -> str:
+    profile_block = _format_user_profile(user_profile) if user_profile else ""
+    system = (
+        "Ты — Henry, встроенный консультант сервиса Leadgen. "
+        "Веди себя как живой человек: профессионально, по-деловому, "
+        "коротко. Никогда не упоминай что ты ИИ.\n\n"
+        "Что входит в твою зону ответственности:\n"
+        "1. Подбор B2B-клиентов из Google Maps: ниши, регионы, "
+        "критерии оценки лидов.\n"
+        "2. Помощь с заполнением рабочего профиля пользователя: "
+        "имя, возрастная категория, размер бизнеса, что он продаёт, "
+        "домашний регион, целевые ниши.\n"
+        "3. Объяснение продукта: hot/warm/cold-скоры, как работает "
+        "анализ, что такое сессия, что делает команда.\n\n"
+        "Жёсткие рамки:\n"
+        "- Не обсуждай ничего вне Leadgen-контекста (погода, политика, "
+        "программирование, личная жизнь, общая болтовня). Коротко "
+        "вежливо откажись и верни диалог к делу.\n"
+        "- Не запрашивай конфиденциальные данные (паспорт, банковские "
+        "реквизиты, пароли, телефон, точный адрес). Профиль — "
+        "бизнес-описание, не персональные данные.\n"
+        "- Не выдумывай. Если деталей не хватает — спроси.\n"
+        "- Один уточняющий вопрос за раз. 1–4 предложения. Язык "
+        "собеседника. Без markdown, без эмодзи.\n\n"
+        "Когда из разговора стало ясно, какое значение пользователь "
+        "хочет видеть в одном или нескольких полях профиля — "
+        "положи их в ``profile_suggestion`` (только реально обозначенные "
+        "поля, остальное — null). Пользователь увидит карточку "
+        "«Применить» и подтвердит. ``suggestion_summary`` — короткое "
+        "описание изменений на языке собеседника.\n\n"
+        + _PROFILE_FIELDS_BLOCK
+        + "\n\nФормат ответа — СТРОГО JSON без markdown:\n"
+        '{"reply": "…", "profile_suggestion": null или объект с '
+        'указанными выше полями, "suggestion_summary": "…|null"}'
+    )
+    if profile_block:
+        system += "\n\nТекущий профиль пользователя:\n" + profile_block
+    return system
+
+
+def _assistant_team_system_prompt(
+    team_context: dict[str, Any] | None,
+    is_owner: bool,
+) -> str:
+    ctx = team_context or {}
+    team_name = ctx.get("name") or "—"
+    team_description = ctx.get("description") or ""
+    members: list[dict[str, Any]] = ctx.get("members") or []
+    viewer_id = ctx.get("viewer_user_id")
+    members_block = ""
+    for m in members:
+        name = m.get("name") or f"User {m.get('user_id')}"
+        role = m.get("role") or "member"
+        descr = m.get("description") or "(описания пока нет)"
+        marker = " ← это вы" if m.get("user_id") == viewer_id else ""
+        members_block += (
+            f"\n- [{role}] {name}{marker} (id={m.get('user_id')}): {descr}"
+        )
+
+    base = (
+        f"Ты — Henry, встроенный консультант сервиса Leadgen. "
+        "Веди себя как живой человек: профессионально, по-деловому, "
+        "коротко. Никогда не упоминай что ты ИИ.\n\n"
+        f"Сейчас ты работаешь в контексте команды «{team_name}».\n"
+        f"Описание команды: {team_description or '(описание команды ещё не задано)'}\n"
+        f"Состав команды:{members_block or ' (членов кроме вас пока нет)'}\n\n"
+    )
+
+    if is_owner:
+        return base + (
+            "Вы говорите с владельцем команды. Ваши задачи:\n"
+            "1. Помогать организовывать работу команды: какие ниши кому "
+            "поручить, как объяснить роли, как описать команду, чтобы "
+            "новые участники сразу понимали зачем она.\n"
+            "2. Предлагать апдейты для team.description и описаний "
+            "конкретных участников через ``team_suggestion``.\n"
+            "3. Объяснять как работает командный CRM, дедупликация лидов "
+            "(один лид = один член команды), и view-as-member.\n\n"
+            "Жёсткие рамки:\n"
+            "- Никаких изменений личного профиля владельца (для этого у "
+            "него отдельное Личное пространство). В команде ты работаешь "
+            "только с командными полями.\n"
+            "- Не обсуждай ничего вне темы Leadgen.\n"
+            "- Не запрашивай конфиденциальные данные участников.\n"
+            "- Один уточняющий вопрос за раз. 1–4 предложения. Язык "
+            "собеседника. Без markdown, без эмодзи.\n\n"
+            "Когда из разговора понятно как стоит обновить описание "
+            "команды или описание конкретных участников — положи их в "
+            "``team_suggestion``. Поля:\n"
+            "- description (string) — короткое описание команды (до 500 "
+            "символов).\n"
+            "- member_descriptions (массив объектов "
+            '{"user_id": int, "description": string}) — короткие '
+            "описания участников (до 300 символов каждое). user_id — "
+            "из списка состава команды выше.\n"
+            "Пользователь увидит карточку «Применить» и сам подтвердит. "
+            "``suggestion_summary`` — короткое резюме изменений.\n\n"
+            "Формат ответа — СТРОГО JSON без markdown:\n"
+            '{"reply": "…", "team_suggestion": null или объект, '
+            '"suggestion_summary": "…|null"}'
+        )
+
+    return base + (
+        "Вы говорите с участником команды (не владельцем). Ваши задачи:\n"
+        "1. Помогать с рабочими вопросами в контексте этой команды: "
+        "как лучше отработать сегмент, кого из коллег спросить, какие "
+        "ниши уже закрыты другими.\n"
+        "2. Объяснять продукт: hot/warm/cold, как работает оценка, "
+        "что такое сессия, как использовать пометки и статусы.\n"
+        "3. Поддерживать координацию: подсказывать кому в команде "
+        "поручены смежные задачи (опираясь на описания участников выше).\n\n"
+        "Жёсткие рамки:\n"
+        "- Личный профиль участника НЕ редактируется в командном режиме. "
+        "Если участник просит обновить личные поля — скажи, что для "
+        "этого есть Личное пространство, и предложи переключиться.\n"
+        "- Не обсуждай ничего вне темы Leadgen.\n"
+        "- Не выдумывай факты о коллегах сверх того что в описаниях выше.\n"
+        "- Не запрашивай конфиденциальные данные.\n"
+        "- Один уточняющий вопрос за раз. 1–4 предложения. Язык "
+        "собеседника. Без markdown, без эмодзи.\n\n"
+        "Формат ответа — СТРОГО JSON без markdown:\n"
+        '{"reply": "…", "suggestion_summary": null}'
+    )
+
+
+def _clean_profile_suggestion(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    allowed = {
+        "display_name",
+        "age_range",
+        "business_size",
+        "service_description",
+        "home_region",
+        "niches",
+    }
+    out: dict[str, Any] = {}
+    for key in allowed:
+        value = raw.get(key)
+        if value is None:
+            continue
+        if key == "niches":
+            if isinstance(value, list):
+                cleaned = [
+                    str(v).strip()
+                    for v in value
+                    if isinstance(v, str) and str(v).strip()
+                ]
+                if cleaned:
+                    out[key] = cleaned[:7]
+            continue
+        text = str(value).strip()
+        if text:
+            out[key] = text
+    return out or None
+
+
+def _clean_team_suggestion(
+    raw: Any, team_context: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    allowed_user_ids = {
+        m.get("user_id")
+        for m in (team_context or {}).get("members", [])
+        if isinstance(m, dict) and isinstance(m.get("user_id"), int)
+    }
+    out: dict[str, Any] = {}
+    description = _trim_or_none(raw.get("description"))
+    if description:
+        out["description"] = description[:500]
+    md_raw = raw.get("member_descriptions")
+    if isinstance(md_raw, list):
+        cleaned: list[dict[str, Any]] = []
+        for entry in md_raw:
+            if not isinstance(entry, dict):
+                continue
+            uid = entry.get("user_id")
+            descr = _trim_or_none(entry.get("description"))
+            if (
+                isinstance(uid, int)
+                and uid in allowed_user_ids
+                and descr
+            ):
+                cleaned.append({"user_id": uid, "description": descr[:300]})
+        if cleaned:
+            out["member_descriptions"] = cleaned
+    return out or None
+
+
 def _heuristic_consult(history: list[dict[str, str]]) -> dict[str, Any]:
     """No-Anthropic fallback for the consultative chat.
 
@@ -905,92 +1108,67 @@ class AIAnalyzer:
         self,
         history: list[dict[str, str]],
         user_profile: dict[str, Any] | None = None,
+        team_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """One round-trip of the floating in-product assistant chat.
 
-        Same Henry persona, broader scope: he answers questions about
-        the Leadgen product, helps the user phrase their profile, and
-        explains what hot/warm/cold or AI-score mean. Stays strictly
-        on-topic — refuses anything unrelated.
+        Two distinct modes driven by ``team_context``:
 
-        When confident, may propose a profile update via the
-        ``profile_suggestion`` slot. The frontend shows it as an
-        explicit "Apply" button so nothing is written without a click.
+        - **Personal** (``team_context`` is None) — Henry helps the
+          user with their personal profile and product questions.
+          Returns ``profile_suggestion`` when applicable.
+        - **Team** (``team_context`` populated) — Henry takes on a
+          team-coordinator persona. He knows the team's purpose +
+          every member's role description and helps the caller work
+          inside the team. Personal-profile editing is disabled here
+          (members keep their own personal workspace for that).
+          Owners additionally get ``team_suggestion`` so they can
+          fill in / refine the team and member descriptions.
         """
         clean_history = [
             {"role": m["role"], "content": str(m.get("content", "")).strip()}
             for m in history
             if m.get("role") in {"user", "assistant"} and m.get("content")
         ]
-        empty_response = {
+        is_team = bool(team_context)
+        is_owner = bool(team_context and team_context.get("is_owner"))
+        mode = "team_owner" if is_owner else "team_member" if is_team else "personal"
+
+        empty_response: dict[str, Any] = {
             "reply": "",
+            "mode": mode,
             "profile_suggestion": None,
+            "team_suggestion": None,
             "suggestion_summary": None,
         }
         if not clean_history:
-            empty_response["reply"] = (
-                "Привет, я Henry — ваш консультант по Leadgen. "
-                "Могу помочь с настройкой профиля, объяснить как работает "
-                "оценка лидов, подсказать как точнее описать ваш сегмент. "
-                "С чем поможем?"
-            )
+            if is_team:
+                team_name = (team_context or {}).get("name") or "вашей команды"
+                empty_response["reply"] = (
+                    f"Привет. Сейчас вы работаете в команде «{team_name}» — "
+                    "помогу с подбором лидов под её специфику, расскажу про "
+                    "коллег и их зоны ответственности. С чем работаем?"
+                )
+            else:
+                empty_response["reply"] = (
+                    "Привет, я Henry — ваш консультант по Leadgen. "
+                    "Могу помочь с настройкой профиля, объяснить как работает "
+                    "оценка лидов, подсказать как точнее описать ваш сегмент. "
+                    "С чем поможем?"
+                )
             return empty_response
 
         if self.client is None:
             empty_response["reply"] = (
                 "Сейчас я могу отвечать только когда AI подключён. "
-                "Попробуйте позже или заполните профиль вручную в /app/profile."
+                "Попробуйте позже."
             )
             return empty_response
 
-        profile_block = _format_user_profile(user_profile) if user_profile else ""
-        system = (
-            "Ты — Henry, встроенный консультант сервиса Leadgen. "
-            "Веди себя как живой человек: профессионально, по-деловому, "
-            "коротко. Никогда не упоминай что ты ИИ.\n\n"
-            "Что входит в твою зону ответственности:\n"
-            "1. Подбор B2B-клиентов из Google Maps: ниши, регионы, "
-            "критерии оценки лидов.\n"
-            "2. Помощь с заполнением рабочего профиля пользователя: имя, "
-            "возрастная категория, размер бизнеса, что он продаёт "
-            "(profession + service_description), домашний регион, "
-            "целевые ниши. Эти данные используются для персонализации "
-            "AI-оценки каждого лида.\n"
-            "3. Объяснение продукта: hot/warm/cold-скоры, как работает "
-            "анализ, что такое сессия, что делает команда.\n\n"
-            "Жёсткие рамки:\n"
-            "- Не обсуждай ничего вне Leadgen-контекста (погода, "
-            "политика, программирование, личная жизнь, общая болтовня). "
-            "Коротко и вежливо откажись и верни диалог к делу.\n"
-            "- Не запрашивай и не сохраняй конфиденциальные данные "
-            "(паспорт, банковские реквизиты, пароли, телефон, точный "
-            "адрес). Профиль — это бизнес-описание, а не персональные "
-            "данные.\n"
-            "- Не выдумывай. Если деталей не хватает — спроси.\n"
-            "- Один уточняющий вопрос за раз. 1–4 предложения на ответ. "
-            "Язык собеседника. Без markdown, без эмодзи.\n\n"
-            "Когда из разговора стало ясно, какое значение пользователь "
-            "хочет видеть в одном или нескольких полях профиля — "
-            "положи их в ``profile_suggestion`` (только реально "
-            "обозначенные поля, остальное — null). Пользователь увидит "
-            "карточку с кнопкой ``Применить`` и сам подтвердит. "
-            "``suggestion_summary`` — короткое описание изменений на "
-            "языке собеседника (например «Обновлю профессию на «SEO для "
-            "локальных подрядчиков» и добавлю две ниши»).\n\n"
-            "Поля профиля, которыми ты можешь предлагать изменения:\n"
-            "- display_name (string)\n"
-            "- age_range (одно из: <18, 18-24, 25-34, 35-44, 45-54, 55+)\n"
-            "- business_size (одно из: solo, small, medium, large)\n"
-            "- service_description (свободный текст что продаёт)\n"
-            "- home_region (string)\n"
-            "- niches (массив строк, 1-7 штук)\n\n"
-            "Формат ответа — СТРОГО JSON без markdown:\n"
-            '{"reply": "…", "profile_suggestion": null или объект с '
-            'указанными выше полями (только заполненные), '
-            '"suggestion_summary": "…|null"}'
-        )
-        if profile_block:
-            system += "\n\nТекущий профиль пользователя:\n" + profile_block
+        if is_team:
+            system = _assistant_team_system_prompt(team_context, is_owner)
+        else:
+            system = _assistant_personal_system_prompt(user_profile)
 
         try:
             async with self._sem:
@@ -1006,46 +1184,29 @@ class AIAnalyzer:
             logger.exception("assistant_chat failed")
             return {
                 "reply": "Не удалось получить ответ. Попробуйте ещё раз.",
+                "mode": mode,
                 "profile_suggestion": None,
+                "team_suggestion": None,
                 "suggestion_summary": None,
             }
 
-        suggestion_raw = data.get("profile_suggestion")
-        suggestion: dict[str, Any] | None = None
-        if isinstance(suggestion_raw, dict):
-            allowed = {
-                "display_name",
-                "age_range",
-                "business_size",
-                "service_description",
-                "home_region",
-                "niches",
-            }
-            suggestion = {}
-            for key in allowed:
-                value = suggestion_raw.get(key)
-                if value is None:
-                    continue
-                if key == "niches":
-                    if isinstance(value, list):
-                        cleaned = [
-                            str(v).strip()
-                            for v in value
-                            if isinstance(v, str) and str(v).strip()
-                        ]
-                        if cleaned:
-                            suggestion[key] = cleaned[:7]
-                    continue
-                text = str(value).strip()
-                if text:
-                    suggestion[key] = text
-            if not suggestion:
-                suggestion = None
+        profile_suggestion: dict[str, Any] | None = None
+        team_suggestion: dict[str, Any] | None = None
+        if not is_team:
+            profile_suggestion = _clean_profile_suggestion(
+                data.get("profile_suggestion")
+            )
+        if is_owner:
+            team_suggestion = _clean_team_suggestion(
+                data.get("team_suggestion"), team_context
+            )
 
         return {
             "reply": str(data.get("reply") or "").strip()
             or "Расскажите подробнее, чтобы я мог помочь.",
-            "profile_suggestion": suggestion,
+            "mode": mode,
+            "profile_suggestion": profile_suggestion,
+            "team_suggestion": team_suggestion,
             "suggestion_summary": _trim_or_none(data.get("suggestion_summary")),
         }
 

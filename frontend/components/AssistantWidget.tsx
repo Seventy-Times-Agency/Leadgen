@@ -7,21 +7,39 @@ import {
   ApiError,
   assistantChat,
   updateMyProfile,
+  updateTeam,
+  updateTeamMember,
+  type AssistantMode,
   type AssistantProfileSuggestion,
+  type AssistantTeamSuggestion,
   type ConsultMessage,
   type UserProfileUpdate,
 } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
+import {
+  activeTeamId,
+  getActiveWorkspace,
+  subscribeWorkspace,
+  type Workspace,
+} from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
-const STORAGE_KEY = "leadgen.henry.history";
+const STORAGE_KEY_BASE = "leadgen.henry.history";
 const MAX_HISTORY = 30;
+
+function storageKeyFor(workspace: Workspace): string {
+  return workspace.kind === "team"
+    ? `${STORAGE_KEY_BASE}.team.${workspace.team_id}`
+    : `${STORAGE_KEY_BASE}.personal`;
+}
 
 interface ChatMsg extends ConsultMessage {
   /** Optional profile change Henry suggested with this assistant turn. */
   suggestion?: AssistantProfileSuggestion | null;
+  team_suggestion?: AssistantTeamSuggestion | null;
   suggestion_summary?: string | null;
   applied?: boolean;
+  mode?: AssistantMode;
 }
 
 const AGE_LABEL_KEY: Record<string, TranslationKey> = {
@@ -53,6 +71,7 @@ export function AssistantWidget() {
   const { t } = useLocale();
   const [open, setOpen] = useState(false);
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [workspace, setWorkspace] = useState<Workspace>({ kind: "personal" });
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -61,29 +80,40 @@ export function AssistantWidget() {
 
   useEffect(() => {
     setSignedIn(getCurrentUser() !== null);
+    setWorkspace(getActiveWorkspace());
+    return subscribeWorkspace(() => setWorkspace(getActiveWorkspace()));
+  }, []);
+
+  // Per-workspace history: switching personal ↔ team flips the chat
+  // so the team consultation isn't mixed with personal-profile help.
+  useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw = window.localStorage.getItem(storageKeyFor(workspace));
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) setMessages(parsed.slice(-MAX_HISTORY));
+        if (Array.isArray(parsed)) {
+          setMessages(parsed.slice(-MAX_HISTORY));
+          return;
+        }
       }
     } catch {
-      // ignore corrupt cache
+      // fall through
     }
-  }, []);
+    setMessages([]);
+  }, [workspace]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       window.localStorage.setItem(
-        STORAGE_KEY,
+        storageKeyFor(workspace),
         JSON.stringify(messages.slice(-MAX_HISTORY)),
       );
     } catch {
       // quota / disabled
     }
-  }, [messages]);
+  }, [messages, workspace]);
 
   useEffect(() => {
     if (open && scrollRef.current) {
@@ -99,7 +129,10 @@ export function AssistantWidget() {
 
   const greet = (): ChatMsg => ({
     role: "assistant",
-    content: t("assistant.greeting"),
+    content:
+      workspace.kind === "team"
+        ? t("assistant.greeting.team", { team: workspace.team_name })
+        : t("assistant.greeting"),
   });
 
   const openWithGreeting = () => {
@@ -122,11 +155,14 @@ export function AssistantWidget() {
     try {
       const reply = await assistantChat(
         next.map(({ role, content }) => ({ role, content })),
+        { teamId: activeTeamId() },
       );
       const incoming: ChatMsg = {
         role: "assistant",
         content: reply.reply,
+        mode: reply.mode,
         suggestion: reply.profile_suggestion,
+        team_suggestion: reply.team_suggestion,
         suggestion_summary: reply.suggestion_summary,
         applied: false,
       };
@@ -167,15 +203,46 @@ export function AssistantWidget() {
 
     try {
       await updateMyProfile(patch);
-      setMessages((all) =>
-        all.map((m, i) => (i === idx ? { ...m, applied: true } : m)),
-      );
+      setMessages((all) => [
+        ...all.map((m, i) => (i === idx ? { ...m, applied: true } : m)),
+        { role: "assistant", content: t("assistant.applied") },
+      ]);
+    } catch (e) {
+      const detail =
+        e instanceof ApiError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : String(e);
       setMessages((all) => [
         ...all,
         {
           role: "assistant",
-          content: t("assistant.applied"),
+          content: t("assistant.applyError", { detail }),
         },
+      ]);
+    }
+  };
+
+  const applyTeamSuggestion = async (idx: number) => {
+    const msg = messages[idx];
+    const sg = msg?.team_suggestion;
+    if (!sg || workspace.kind !== "team") return;
+    const teamId = workspace.team_id;
+    try {
+      if (sg.description !== undefined && sg.description !== null) {
+        await updateTeam(teamId, { description: sg.description });
+      }
+      if (sg.member_descriptions && sg.member_descriptions.length > 0) {
+        for (const m of sg.member_descriptions) {
+          await updateTeamMember(teamId, m.user_id, {
+            description: m.description,
+          });
+        }
+      }
+      setMessages((all) => [
+        ...all.map((m, i) => (i === idx ? { ...m, applied: true } : m)),
+        { role: "assistant", content: t("assistant.applied") },
       ]);
     } catch (e) {
       const detail =
@@ -365,7 +432,8 @@ export function AssistantWidget() {
               <AssistantMessage
                 key={i}
                 msg={m}
-                onApply={() => applySuggestion(i)}
+                onApplyProfile={() => applySuggestion(i)}
+                onApplyTeam={() => applyTeamSuggestion(i)}
               />
             ))}
             {thinking && (
@@ -443,10 +511,12 @@ export function AssistantWidget() {
 
 function AssistantMessage({
   msg,
-  onApply,
+  onApplyProfile,
+  onApplyTeam,
 }: {
   msg: ChatMsg;
-  onApply: () => void;
+  onApplyProfile: () => void;
+  onApplyTeam: () => void;
 }) {
   const { t } = useLocale();
   const isBot = msg.role === "assistant";
@@ -499,7 +569,14 @@ function AssistantMessage({
           <SuggestionCard
             suggestion={msg.suggestion}
             summary={msg.suggestion_summary ?? undefined}
-            onApply={onApply}
+            onApply={onApplyProfile}
+          />
+        )}
+        {isBot && msg.team_suggestion && !msg.applied && (
+          <TeamSuggestionCard
+            suggestion={msg.team_suggestion}
+            summary={msg.suggestion_summary ?? undefined}
+            onApply={onApplyTeam}
           />
         )}
         {isBot && msg.applied && (
@@ -598,6 +675,76 @@ function SuggestionCard({
             key={it.label}
             style={{ fontSize: 12, lineHeight: 1.4 }}
           >
+            <span style={{ color: "var(--text-dim)" }}>{it.label}:</span>{" "}
+            <span style={{ color: "var(--text)" }}>{it.value}</span>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="btn btn-sm"
+        onClick={onApply}
+        style={{ alignSelf: "flex-start", marginTop: 4 }}
+      >
+        <Icon name="check" size={12} /> {t("assistant.apply")}
+      </button>
+    </div>
+  );
+}
+
+function TeamSuggestionCard({
+  suggestion,
+  summary,
+  onApply,
+}: {
+  suggestion: AssistantTeamSuggestion;
+  summary?: string;
+  onApply: () => void;
+}) {
+  const { t } = useLocale();
+  const items: { label: string; value: string }[] = [];
+  if (suggestion.description) {
+    items.push({
+      label: t("assistant.team.descriptionLabel"),
+      value: suggestion.description,
+    });
+  }
+  if (suggestion.member_descriptions) {
+    for (const m of suggestion.member_descriptions) {
+      items.push({
+        label: t("assistant.team.memberLabel", { id: m.user_id }),
+        value: m.description,
+      });
+    }
+  }
+  if (items.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        padding: 10,
+        background: "var(--surface)",
+        border: "1px solid color-mix(in srgb, var(--accent) 25%, var(--border))",
+        borderRadius: 10,
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+      }}
+    >
+      <div
+        className="eyebrow"
+        style={{ fontSize: 9, color: "var(--accent)", marginBottom: 2 }}
+      >
+        {t("assistant.team.suggestion")}
+      </div>
+      {summary && (
+        <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>
+          {summary}
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {items.map((it) => (
+          <div key={it.label} style={{ fontSize: 12, lineHeight: 1.45 }}>
             <span style={{ color: "var(--text-dim)" }}>{it.label}:</span>{" "}
             <span style={{ color: "var(--text)" }}>{it.value}</span>
           </div>

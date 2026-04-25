@@ -16,8 +16,11 @@ import {
   ApiError,
   consultSearch,
   createSearch,
+  preflightSearch,
   type ConsultMessage,
+  type PriorTeamSearch,
 } from "@/lib/api";
+import Link from "next/link";
 import { activeTeamId } from "@/lib/workspace";
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
@@ -68,7 +71,34 @@ function NewSearchInner() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
   const [readyToLaunch, setReadyToLaunch] = useState(false);
+  const [duplicateMatches, setDuplicateMatches] = useState<PriorTeamSearch[]>([]);
   const chatRef = useRef<HTMLDivElement>(null);
+
+  const teamId = activeTeamId();
+
+  // Hard rule: in team mode, the same niche+region can't be re-run.
+  // Preflight against the backend whenever the combo settles down so
+  // the launch button can be disabled before the user clicks it.
+  useEffect(() => {
+    if (!teamId || !niche.trim() || !region.trim()) {
+      setDuplicateMatches([]);
+      return;
+    }
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      preflightSearch({ niche, region, teamId })
+        .then((r) => {
+          if (!cancelled) setDuplicateMatches(r.matches);
+        })
+        .catch(() => {
+          if (!cancelled) setDuplicateMatches([]);
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [teamId, niche, region]);
 
   useEffect(() => {
     if (chatRef.current) {
@@ -159,7 +189,11 @@ function NewSearchInner() {
     }
   };
 
-  const launchDisabled = launching || !niche.trim() || !region.trim();
+  const launchDisabled =
+    launching ||
+    !niche.trim() ||
+    !region.trim() ||
+    duplicateMatches.length > 0;
 
   return (
     <>
@@ -214,6 +248,7 @@ function NewSearchInner() {
           launching={launching}
           launchDisabled={launchDisabled}
           submitError={submitError}
+          duplicateMatches={duplicateMatches}
         />
       </div>
     </>
@@ -470,6 +505,7 @@ function FormColumn({
   launching,
   launchDisabled,
   submitError,
+  duplicateMatches,
 }: {
   niche: string;
   region: string;
@@ -487,6 +523,7 @@ function FormColumn({
   launching: boolean;
   launchDisabled: boolean;
   submitError: string | null;
+  duplicateMatches: PriorTeamSearch[];
 }) {
   const { t } = useLocale();
 
@@ -641,6 +678,78 @@ function FormColumn({
         <Icon name="zap" size={16} style={{ color: "var(--warm)" }} />
         <div style={{ flex: 1 }}>{t("search.form.meta")}</div>
       </div>
+
+      {duplicateMatches.length > 0 && (
+        <div
+          style={{
+            padding: "14px 16px",
+            border:
+              "1px solid color-mix(in srgb, var(--cold) 35%, var(--border))",
+            background: "color-mix(in srgb, var(--cold) 6%, var(--surface))",
+            borderRadius: 12,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              color: "var(--cold)",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            <Icon name="x" size={14} />
+            {t("search.preflight.title")}
+          </div>
+          <div
+            style={{
+              fontSize: 12.5,
+              color: "var(--text-muted)",
+              lineHeight: 1.5,
+            }}
+          >
+            {t("search.preflight.body")}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {duplicateMatches.slice(0, 3).map((m) => (
+              <div
+                key={m.search_id}
+                style={{
+                  fontSize: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  color: "var(--text)",
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>{m.user_name}</span>
+                <span style={{ color: "var(--text-dim)" }}>·</span>
+                <span style={{ color: "var(--text-muted)" }}>
+                  {new Date(m.created_at).toLocaleDateString()}
+                </span>
+                <span style={{ color: "var(--text-dim)" }}>·</span>
+                <span style={{ color: "var(--text-muted)" }}>
+                  {t("search.preflight.leadsCount", { n: m.leads_count })}
+                </span>
+                <Link
+                  href={`/app/sessions/${m.search_id}`}
+                  style={{
+                    marginLeft: "auto",
+                    color: "var(--accent)",
+                    fontSize: 11.5,
+                  }}
+                >
+                  {t("search.preflight.openSession")}
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {submitError && (
         <div style={{ fontSize: 13, color: "var(--cold)" }}>{submitError}</div>

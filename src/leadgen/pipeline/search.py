@@ -38,7 +38,7 @@ from leadgen.collectors.google_places import GooglePlacesError
 from leadgen.config import get_settings
 from leadgen.core.services import DeliverySink, ProgressSink
 from leadgen.db import Lead, SearchQuery, session_factory
-from leadgen.db.models import UserSeenLead
+from leadgen.db.models import TeamSeenLead, UserSeenLead
 from leadgen.pipeline.enrichment import enrich_leads
 from leadgen.pipeline.progress import ProgressReporter
 from leadgen.utils.metrics import (
@@ -151,6 +151,7 @@ async def run_search_with_sinks(
             await session.commit()
             niche, region = query.niche, query.region
             user_id = query.user_id
+            team_id = query.team_id
         logger.info(
             "run_search: query loaded niche=%r region=%r user=%s",
             niche,
@@ -197,19 +198,31 @@ async def run_search_with_sinks(
         # every company is already "seen" by somebody's prior run. Skip
         # the dedup memory for user_id=0; real users keep the cross-run
         # dedup that the Telegram flow relies on.
-        skip_dedup = user_id == 0
+        skip_dedup = user_id == 0 and team_id is None
         async with session_factory() as session:
             incoming_source_ids = [r.source_id for r in raw_leads if r.source_id]
-            if skip_dedup:
-                already_seen: set[str] = set()
-            else:
-                seen_rows = await session.execute(
-                    select(UserSeenLead.source_id)
-                    .where(UserSeenLead.user_id == user_id)
-                    .where(UserSeenLead.source == "google_places")
-                    .where(UserSeenLead.source_id.in_(incoming_source_ids))
-                )
-                already_seen = {row[0] for row in seen_rows.all()}
+            already_seen: set[str] = set()
+            if not skip_dedup and incoming_source_ids:
+                # Personal dedup: things this user has already received.
+                if user_id != 0:
+                    seen_rows = await session.execute(
+                        select(UserSeenLead.source_id)
+                        .where(UserSeenLead.user_id == user_id)
+                        .where(UserSeenLead.source == "google_places")
+                        .where(UserSeenLead.source_id.in_(incoming_source_ids))
+                    )
+                    already_seen.update(row[0] for row in seen_rows.all())
+                # Team dedup: hard rule — if any teammate has seen this
+                # place under this team, exclude it. The same lead never
+                # appears in two members' CRMs in one team.
+                if team_id is not None:
+                    team_rows = await session.execute(
+                        select(TeamSeenLead.source_id)
+                        .where(TeamSeenLead.team_id == team_id)
+                        .where(TeamSeenLead.source == "google_places")
+                        .where(TeamSeenLead.source_id.in_(incoming_source_ids))
+                    )
+                    already_seen.update(row[0] for row in team_rows.all())
 
             batch_seen: set[str] = set()
             rows: list[Lead] = []
@@ -276,11 +289,27 @@ async def run_search_with_sinks(
             session.add_all(rows)
             if seen_to_insert and not skip_dedup:
                 from sqlalchemy.dialects.postgresql import insert as pg_insert
-                stmt = pg_insert(UserSeenLead).values(seen_to_insert)
-                stmt = stmt.on_conflict_do_nothing(
-                    index_elements=["user_id", "source", "source_id"]
-                )
-                await session.execute(stmt)
+                if user_id != 0:
+                    stmt = pg_insert(UserSeenLead).values(seen_to_insert)
+                    stmt = stmt.on_conflict_do_nothing(
+                        index_elements=["user_id", "source", "source_id"]
+                    )
+                    await session.execute(stmt)
+                if team_id is not None:
+                    team_rows_to_insert = [
+                        {
+                            "team_id": team_id,
+                            "source": item["source"],
+                            "source_id": item["source_id"],
+                            "first_user_id": user_id,
+                        }
+                        for item in seen_to_insert
+                    ]
+                    team_stmt = pg_insert(TeamSeenLead).values(team_rows_to_insert)
+                    team_stmt = team_stmt.on_conflict_do_nothing(
+                        index_elements=["team_id", "source", "source_id"]
+                    )
+                    await session.execute(team_stmt)
             await session.commit()
             leads_persisted_total.inc(len(rows))
             logger.info(

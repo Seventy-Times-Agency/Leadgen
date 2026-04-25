@@ -248,6 +248,28 @@ const TRANSLATIONS = {
     "assistant.applied": "Профиль обновлён.",
     "assistant.applyError":
       "Не получилось обновить профиль ({detail}).",
+    "assistant.greeting.team":
+      "Привет. Сейчас вы работаете в команде «{team}» — помогу с подбором лидов под её специфику, расскажу про коллег и их зоны ответственности. С чем работаем?",
+    "assistant.team.suggestion": "Предложенные правки команды",
+    "assistant.team.descriptionLabel": "Описание команды",
+    "assistant.team.memberLabel": "Описание для участника #{id}",
+
+    // Search preflight (team duplicate combo)
+    "search.preflight.title": "Эта связка уже использовалась в команде",
+    "search.preflight.body":
+      "Один и тот же набор «ниша + регион» нельзя запускать дважды — лиды бы пересеклись с уже собранными у коллег. Откройте существующую сессию или попробуйте другую формулировку.",
+    "search.preflight.leadsCount": "{n} лидов",
+    "search.preflight.openSession": "Открыть сессию →",
+
+    // Team description / member descriptions
+    "team.descriptionLabel": "Описание команды",
+    "team.descriptionEmpty": "Описание ещё не задано — расскажите команде зачем она существует.",
+    "team.descriptionPh":
+      "Например: команда работает с премиум-сегментом стоматологий в EU и Азии.",
+    "team.member.descriptionEmpty":
+      "Нет описания участника. Кликните карандаш чтобы добавить.",
+    "team.member.descriptionPh":
+      "Чем занимается человек, что закрывает.",
     "search.chat.tryThese": "Попробуйте один из вариантов",
     "search.chat.placeholder": "Опишите кого ищете…",
     "search.chat.gotIt":
@@ -657,6 +679,26 @@ const TRANSLATIONS = {
     "assistant.applied": "Profile updated.",
     "assistant.applyError":
       "Couldn't update profile ({detail}).",
+    "assistant.greeting.team":
+      "Hi. You're working in team \"{team}\" right now — I'll help with leads scoped to its focus and share what your teammates are doing. What's up?",
+    "assistant.team.suggestion": "Suggested team edits",
+    "assistant.team.descriptionLabel": "Team description",
+    "assistant.team.memberLabel": "Note for member #{id}",
+
+    "search.preflight.title": "This combo was already used in the team",
+    "search.preflight.body":
+      "Same niche + region can't run twice — leads would overlap with what teammates already have. Open the existing session or pick a different angle.",
+    "search.preflight.leadsCount": "{n} leads",
+    "search.preflight.openSession": "Open session →",
+
+    "team.descriptionLabel": "Team description",
+    "team.descriptionEmpty": "Description hasn't been set yet — tell the team why it exists.",
+    "team.descriptionPh":
+      "e.g. premium-segment dental clinics across EU and Asia.",
+    "team.member.descriptionEmpty":
+      "No description for this member. Click the pencil to add one.",
+    "team.member.descriptionPh":
+      "What this person works on, what they close.",
     "search.chat.tryThese": "Try one of these",
     "search.chat.placeholder": "Describe who you're looking for…",
     "search.chat.gotIt":
