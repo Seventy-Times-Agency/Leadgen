@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { ConviooMark } from "@/components/ConviooLogo";
+import { ConviooWordmark } from "@/components/ConviooLogo";
 import { useLocale } from "@/lib/i18n";
 
 export function AuthShell({
@@ -41,17 +41,14 @@ export function AuthShell({
           <Link
             href="/"
             style={{
-              display: "flex",
+              display: "inline-flex",
               alignItems: "center",
-              gap: 10,
-              fontWeight: 700,
-              fontSize: 15,
               color: "inherit",
               textDecoration: "none",
             }}
+            aria-label="Convioo"
           >
-            <ConviooMark size={28} />
-            <span>Convioo</span>
+            <ConviooWordmark height={32} fallbackTextSize={15} />
           </Link>
           <LanguageSwitcher compact />
         </div>

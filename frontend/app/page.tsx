@@ -3,7 +3,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
-import { ConviooMark } from "@/components/ConviooLogo";
+import { ConviooMark, ConviooWordmark } from "@/components/ConviooLogo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { PREVIEW_LEADS } from "@/lib/mockLeads";
 import { useLocale } from "@/lib/i18n";
@@ -40,12 +40,7 @@ export default function HomePage() {
             justifyContent: "space-between",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <LogoMark />
-            <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em" }}>
-              Convioo
-            </div>
-          </div>
+          <ConviooWordmark height={32} fallbackTextSize={15} />
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <LanguageSwitcher compact />
             <Link href="/login" className="btn btn-ghost btn-sm">

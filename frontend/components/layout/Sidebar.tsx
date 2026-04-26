@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon, type IconName } from "@/components/Icon";
-import { ConviooMark } from "@/components/ConviooLogo";
+import { ConviooWordmark } from "@/components/ConviooLogo";
 import {
   clearCurrentUser,
   getCurrentUser,
@@ -104,8 +104,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 12px 14px" }}>
-        <ConviooMark size={28} />
-        <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em" }}>Convioo</div>
+        <ConviooWordmark height={24} fallbackTextSize={14} />
         <div className="chip" style={{ marginLeft: "auto", fontSize: 10, padding: "2px 7px" }}>
           beta
         </div>
