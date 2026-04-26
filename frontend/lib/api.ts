@@ -526,6 +526,28 @@ export async function updateLead(id: string, patch: LeadUpdate): Promise<Lead> {
   });
 }
 
+export type EmailTone = "professional" | "casual" | "bold";
+
+export interface LeadEmailDraft {
+  subject: string;
+  body: string;
+  tone: EmailTone;
+}
+
+export async function draftLeadEmail(
+  leadId: string,
+  opts: { tone?: EmailTone; extraContext?: string } = {},
+): Promise<LeadEmailDraft> {
+  return request<LeadEmailDraft>(`/api/v1/leads/${leadId}/draft-email`, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: requireUserId(),
+      tone: opts.tone ?? "professional",
+      extra_context: opts.extraContext ?? null,
+    }),
+  });
+}
+
 export async function setLeadMark(
   leadId: string,
   color: LeadMarkColor | null,

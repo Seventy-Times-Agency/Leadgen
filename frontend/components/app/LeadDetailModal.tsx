@@ -3,11 +3,14 @@
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import {
+  type EmailTone,
   type Lead,
+  type LeadEmailDraft,
   type LeadMarkColor,
   type LeadStatus,
   LEAD_MARK_COLORS,
   LEAD_MARK_HEX,
+  draftLeadEmail,
   leadMarkHex,
   setLeadMark,
   tempOf,
@@ -16,6 +19,7 @@ import {
 import { useLocale, type TranslationKey } from "@/lib/i18n";
 
 const STATUSES: LeadStatus[] = ["new", "contacted", "replied", "won", "archived"];
+const TONES: EmailTone[] = ["professional", "casual", "bold"];
 
 export function LeadDetailModal({
   lead,
@@ -211,31 +215,7 @@ export function LeadDetailModal({
                 <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text)" }}>
                   {lead.advice}
                 </div>
-                <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    disabled
-                    title={t("lead.sendEmail.soon")}
-                    style={{ opacity: 0.65 }}
-                  >
-                    <Icon name="mail" size={13} />
-                    {t("lead.sendEmail.gmail")}
-                    <span
-                      className="chip"
-                      style={{
-                        fontSize: 9,
-                        marginLeft: 6,
-                        padding: "1px 6px",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                        color: "var(--text-dim)",
-                      }}
-                    >
-                      {t("settings.connector.soon")}
-                    </span>
-                  </button>
-                </div>
+                <ColdEmailDraft leadId={lead.id} />
               </div>
             )}
 
@@ -535,6 +515,277 @@ export function LeadDetailModal({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ColdEmailDraft({ leadId }: { leadId: string }) {
+  const { t } = useLocale();
+  const [draft, setDraft] = useState<LeadEmailDraft | null>(null);
+  const [tone, setTone] = useState<EmailTone>("professional");
+  const [extra, setExtra] = useState("");
+  const [showExtra, setShowExtra] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState<"subject" | "body" | "all" | null>(null);
+
+  const generate = async (nextTone?: EmailTone) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const result = await draftLeadEmail(leadId, {
+        tone: nextTone ?? tone,
+        extraContext: extra.trim() || undefined,
+      });
+      setDraft(result);
+      if (nextTone) setTone(nextTone);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async (kind: "subject" | "body" | "all") => {
+    if (!draft) return;
+    const text =
+      kind === "subject"
+        ? draft.subject
+        : kind === "body"
+          ? draft.body
+          : `${draft.subject}\n\n${draft.body}`;
+    try {
+      await navigator.clipboard?.writeText(text);
+      setCopied(kind);
+      setTimeout(() => setCopied(null), 1500);
+    } catch {
+      // ignore — clipboard may be unavailable
+    }
+  };
+
+  if (!draft) {
+    return (
+      <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => generate()}
+            disabled={busy}
+          >
+            <Icon name="mail" size={13} />
+            {busy ? t("common.loading") : t("lead.email.generate")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowExtra((v) => !v)}
+          >
+            {showExtra ? t("lead.email.hideExtra") : t("lead.email.addExtra")}
+          </button>
+        </div>
+        {showExtra && (
+          <textarea
+            className="textarea"
+            rows={2}
+            value={extra}
+            onChange={(e) => setExtra(e.target.value)}
+            placeholder={t("lead.email.extraPh")}
+            maxLength={500}
+            style={{ fontSize: 13 }}
+          />
+        )}
+        {err && <div style={{ fontSize: 12, color: "var(--cold)" }}>{err}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: 14,
+        borderRadius: 12,
+        border: "1px solid var(--border)",
+        background: "var(--surface)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
+        <div className="eyebrow" style={{ color: "var(--accent)" }}>
+          <Icon name="mail" size={11} style={{ marginRight: 4, verticalAlign: "-2px" }} />
+          {t("lead.email.draft")}
+        </div>
+        <div className="seg" style={{ fontSize: 11 }}>
+          {TONES.map((tn) => (
+            <button
+              key={tn}
+              type="button"
+              className={tone === tn ? "active" : ""}
+              onClick={() => generate(tn)}
+              disabled={busy}
+              style={{ fontSize: 11, padding: "4px 10px" }}
+            >
+              {t(`lead.email.tone.${tn}` as TranslationKey)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 4,
+          }}
+        >
+          <div className="eyebrow" style={{ fontSize: 9, marginBottom: 0 }}>
+            {t("lead.email.subject")}
+          </div>
+          <button
+            type="button"
+            onClick={() => copy("subject")}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 11,
+              color: copied === "subject" ? "var(--hot)" : "var(--accent)",
+              padding: 0,
+            }}
+          >
+            {copied === "subject" ? t("lead.email.copied") : t("lead.email.copy")}
+          </button>
+        </div>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            lineHeight: 1.4,
+            padding: "8px 12px",
+            background: "var(--surface-2)",
+            borderRadius: 8,
+            border: "1px solid var(--border)",
+          }}
+        >
+          {draft.subject}
+        </div>
+      </div>
+
+      <div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 4,
+          }}
+        >
+          <div className="eyebrow" style={{ fontSize: 9, marginBottom: 0 }}>
+            {t("lead.email.body")}
+          </div>
+          <button
+            type="button"
+            onClick={() => copy("body")}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 11,
+              color: copied === "body" ? "var(--hot)" : "var(--accent)",
+              padding: 0,
+            }}
+          >
+            {copied === "body" ? t("lead.email.copied") : t("lead.email.copy")}
+          </button>
+        </div>
+        <div
+          style={{
+            fontSize: 13.5,
+            lineHeight: 1.55,
+            padding: "10px 12px",
+            background: "var(--surface-2)",
+            borderRadius: 8,
+            border: "1px solid var(--border)",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {draft.body}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={() => copy("all")}
+          disabled={busy}
+        >
+          {copied === "all" ? t("lead.email.copied") : t("lead.email.copyAll")}
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => generate()}
+          disabled={busy}
+        >
+          <Icon name="sparkles" size={12} />
+          {busy ? t("common.loading") : t("lead.email.regenerate")}
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => setShowExtra((v) => !v)}
+        >
+          {showExtra ? t("lead.email.hideExtra") : t("lead.email.addExtra")}
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled
+          title={t("lead.sendEmail.soon")}
+          style={{ opacity: 0.55, marginLeft: "auto" }}
+        >
+          <Icon name="send" size={12} />
+          {t("lead.email.sendGmail")}
+          <span
+            className="chip"
+            style={{
+              fontSize: 9,
+              marginLeft: 6,
+              padding: "1px 6px",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              color: "var(--text-dim)",
+            }}
+          >
+            {t("settings.connector.soon")}
+          </span>
+        </button>
+      </div>
+      {showExtra && (
+        <textarea
+          className="textarea"
+          rows={2}
+          value={extra}
+          onChange={(e) => setExtra(e.target.value)}
+          placeholder={t("lead.email.extraPh")}
+          maxLength={500}
+          style={{ fontSize: 13 }}
+        />
+      )}
+      {err && <div style={{ fontSize: 12, color: "var(--cold)" }}>{err}</div>}
     </div>
   );
 }

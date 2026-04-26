@@ -293,6 +293,25 @@ class LeadResponse(BaseModel):
     created_at: datetime
 
 
+class LeadEmailDraftRequest(BaseModel):
+    """POST body for /leads/{id}/draft-email — Henry writes a cold email.
+
+    ``tone`` ∈ {"professional", "casual", "bold"} (default professional).
+    ``extra_context`` lets the salesperson add a one-liner like
+    "they just opened a new branch" so the model can lean on it.
+    """
+
+    user_id: int
+    tone: str = Field(default="professional", max_length=32)
+    extra_context: str | None = Field(default=None, max_length=600)
+
+
+class LeadEmailDraftResponse(BaseModel):
+    subject: str
+    body: str
+    tone: str
+
+
 class LeadMarkRequest(BaseModel):
     """PUT /api/v1/leads/{id}/mark — set or clear the caller's mark.
 

@@ -45,6 +45,8 @@ from leadgen.adapters.web_api.schemas import (
     InviteCreateRequest,
     InvitePreview,
     InviteResponse,
+    LeadEmailDraftRequest,
+    LeadEmailDraftResponse,
     LeadListResponse,
     LeadMarkRequest,
     LeadResponse,
@@ -1084,6 +1086,67 @@ def create_app() -> FastAPI:
             if lead is None:
                 raise HTTPException(status_code=404, detail="lead not found")
             return LeadResponse.model_validate(lead)
+
+    @app.post(
+        "/api/v1/leads/{lead_id}/draft-email",
+        response_model=LeadEmailDraftResponse,
+    )
+    async def draft_lead_email(
+        lead_id: uuid.UUID, body: LeadEmailDraftRequest
+    ) -> LeadEmailDraftResponse:
+        """Generate a personalised cold-email draft for one lead.
+
+        The frontend opens the draft inline in the lead modal — the
+        salesperson can copy the subject + body (or regenerate with a
+        different tone) and paste into Gmail. Real send-via-Gmail
+        ships once the OAuth connector lands.
+        """
+        async with session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise HTTPException(status_code=404, detail="lead not found")
+            user = await session.get(User, body.user_id)
+
+        user_profile: dict[str, Any] = {}
+        if user is not None:
+            user_profile = {
+                "display_name": user.display_name or user.first_name,
+                "age_range": user.age_range,
+                "business_size": user.business_size,
+                "profession": user.profession,
+                "service_description": user.service_description,
+                "home_region": user.home_region,
+                "niches": list(user.niches or []),
+                "language_code": user.language_code,
+            }
+
+        lead_payload = {
+            "name": lead.name,
+            "category": lead.category,
+            "address": lead.address,
+            "website": lead.website,
+            "rating": lead.rating,
+            "reviews_count": lead.reviews_count,
+            "score_ai": lead.score_ai,
+            "summary": lead.summary,
+            "advice": lead.advice,
+            "strengths": list(lead.strengths) if lead.strengths else None,
+            "weaknesses": list(lead.weaknesses) if lead.weaknesses else None,
+            "red_flags": list(lead.red_flags) if lead.red_flags else None,
+        }
+
+        analyzer = AIAnalyzer()
+        result = await analyzer.generate_cold_email(
+            lead_payload,
+            user_profile=user_profile or None,
+            tone=body.tone,
+            extra_context=body.extra_context,
+        )
+        return LeadEmailDraftResponse(
+            subject=result["subject"],
+            body=result["body"],
+            tone=result["tone"],
+        )
 
     @app.put("/api/v1/leads/{lead_id}/mark", response_model=LeadResponse)
     async def set_lead_mark(

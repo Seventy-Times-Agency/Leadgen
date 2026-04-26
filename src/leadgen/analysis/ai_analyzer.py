@@ -596,6 +596,62 @@ def _clean_team_suggestion(
     return out or None
 
 
+def _format_lead_for_email(lead: dict[str, Any]) -> str:
+    """Compact bullet block describing a lead for the email prompt."""
+    parts: list[str] = []
+    if lead.get("name"):
+        parts.append(f"- Название: {lead['name']}")
+    if lead.get("category"):
+        parts.append(f"- Категория: {lead['category']}")
+    if lead.get("address"):
+        parts.append(f"- Адрес: {lead['address']}")
+    if lead.get("rating") is not None:
+        rc = lead.get("reviews_count")
+        rc_str = f" ({rc} отзывов)" if rc else ""
+        parts.append(f"- Рейтинг: {lead['rating']}{rc_str}")
+    if lead.get("website"):
+        parts.append(f"- Сайт: {lead['website']}")
+    if lead.get("score_ai") is not None:
+        parts.append(f"- AI-скор: {lead['score_ai']}/100")
+    if lead.get("summary"):
+        parts.append(f"- Резюме: {lead['summary']}")
+    if lead.get("strengths"):
+        strengths = ", ".join(str(s) for s in lead["strengths"][:4])
+        parts.append(f"- Сильные стороны: {strengths}")
+    if lead.get("weaknesses"):
+        weaknesses = ", ".join(str(s) for s in lead["weaknesses"][:4])
+        parts.append(f"- Слабые стороны: {weaknesses}")
+    if lead.get("advice"):
+        parts.append(f"- Как презентовать (AI-совет): {lead['advice']}")
+    return "\n".join(parts) if parts else "(данные о лиде минимальные)"
+
+
+def _heuristic_email(
+    lead: dict[str, Any],
+    user_profile: dict[str, Any] | None,
+    tone: str,
+) -> dict[str, Any]:
+    """Last-resort template for the no-API-key path.
+
+    Generic enough to ship, specific enough that the user knows it
+    came from the lead's row (name + their profession).
+    """
+    name = lead.get("name") or "ваша команда"
+    profession = (user_profile or {}).get("profession") or "наши услуги"
+    body = (
+        f"Заметил {name} — выглядит интересно для нашего профиля.\n\n"
+        f"Я работаю с похожими компаниями ({profession}) и хотел "
+        "коротко спросить — есть ли смысл показать пример того что "
+        "мы обычно делаем?\n\n"
+        "Если интересно — отвечу одним сообщением, без созвонов."
+    )
+    return {
+        "subject": f"{name} — короткое наблюдение",
+        "body": body,
+        "tone": tone,
+    }
+
+
 def _heuristic_consult(history: list[dict[str, str]]) -> dict[str, Any]:
     """No-Anthropic fallback for the consultative chat.
 
@@ -1406,6 +1462,132 @@ class AIAnalyzer:
             "team_suggestion": team_suggestion,
             "suggestion_summary": _trim_or_none(data.get("suggestion_summary")),
         }
+
+    async def generate_cold_email(
+        self,
+        lead: dict[str, Any],
+        user_profile: dict[str, Any] | None = None,
+        tone: str = "professional",
+        extra_context: str | None = None,
+    ) -> dict[str, Any]:
+        """Draft a personalised cold email for one lead.
+
+        Returns ``{"subject": str, "body": str, "tone": str}``. The
+        prompt is a senior B2B copywriter — short, value-first, one
+        soft CTA, no clichés. Heuristic fallback returns a generic
+        template so the UI doesn't break when the API key is missing.
+        """
+        clean_tone = (tone or "professional").strip().lower()
+        if clean_tone not in {"professional", "casual", "bold"}:
+            clean_tone = "professional"
+
+        if self.client is None:
+            return _heuristic_email(lead, user_profile, clean_tone)
+
+        profile_block = _format_user_profile(user_profile) if user_profile else ""
+        lead_block = _format_lead_for_email(lead)
+        tone_hint = {
+            "professional": (
+                "Тон: профессиональный, тёплый, по-человечески "
+                "уверенный. Без формальностей вроде «уважаемый»."
+            ),
+            "casual": (
+                "Тон: лёгкий, дружелюбный, как письмо знакомому. "
+                "Без сленга, но без жёстких формальностей."
+            ),
+            "bold": (
+                "Тон: уверенный, прямой, с конкретным провокационным "
+                "наблюдением. Без агрессии, но без воды."
+            ),
+        }[clean_tone]
+        extra_block = ""
+        if extra_context:
+            extra_block = (
+                "\n\nДополнительный контекст от продажника "
+                f"(учти при формулировке):\n{extra_context.strip()}"
+            )
+
+        system = (
+            "Ты — senior B2B-копирайтер по холодным письмам. 10+ лет "
+            "пишешь outbound для агентств, SaaS, локальных услуг. "
+            "Твои письма открывают и отвечают потому что они "
+            "персональные, короткие и не звучат как спам.\n\n"
+            "==============================================\n"
+            "ЗАДАЧА\n"
+            "==============================================\n"
+            "Написать ОДНО первое холодное письмо от лица продажника "
+            "конкретно этому лиду. Используй данные про лида (его "
+            "сильные стороны, слабые, AI-advice) и профиль продажника "
+            "(что он продаёт, кому). Письмо ДОЛЖНО быть про этого "
+            "конкретного лида, не общая шаблонка.\n\n"
+            "==============================================\n"
+            "ЖЁСТКИЕ ПРАВИЛА\n"
+            "==============================================\n"
+            "1. Тема: 4-8 слов, без капса, без эмодзи, без "
+            "«предложение / коммерческое». Цель — открыть.\n"
+            "2. Тело: 50-100 слов МАКСИМУМ. Длиннее — не читают.\n"
+            "3. Структура тела:\n"
+            "   • 1-2 строки персонализированного opener-а — отсылка "
+            "к чему-то конкретному в этой компании (рейтинг, отзывы, "
+            "сильная сторона, заметная слабость, рынок). НЕ «я "
+            "посмотрел ваш сайт и впечатлился» — это пустой шаблон.\n"
+            "   • 1-2 строки value: что у тебя есть полезного для "
+            "именно их ситуации. Связь между их слабостью / "
+            "возможностью и твоим оффером.\n"
+            "   • 1 короткое предложение CTA. Не «давайте созвон "
+            "на этой неделе», а «есть смысл показать пример?» или "
+            "«ответьте если интересно — пришлю короткое "
+            "видео/кейс».\n"
+            "4. БЕЗ КЛИШЕ:\n"
+            "   • «I hope this email finds you well»\n"
+            "   • «Sorry to bother»\n"
+            "   • «Just wanted to reach out»\n"
+            "   • «Quick question»\n"
+            "   • «Уважаемый», «надеюсь у вас всё хорошо»\n"
+            "5. Без markdown, без эмодзи, без буллетов в теле. "
+            "Обычный текст с переносами строк.\n"
+            "6. Язык письма = язык/локализация лида и продажника. "
+            "Если профиль продажника по-русски и лид в русскоязычном "
+            "регионе — пиши по-русски. Если лид в Берлине и "
+            "профиль не русскоязычный — пиши по-английски (это "
+            "стандарт для DACH B2B).\n"
+            f"7. {tone_hint}\n\n"
+            "==============================================\n"
+            "ФОРМАТ ОТВЕТА — СТРОГО JSON БЕЗ MARKDOWN\n"
+            "==============================================\n"
+            '{"subject": "…", "body": "…"}'
+        )
+        if profile_block:
+            system += "\n\nПРОФИЛЬ ПРОДАЖНИКА:\n" + profile_block
+        system += "\n\nЛИД:\n" + lead_block + extra_block
+
+        try:
+            async with self._sem:
+                msg = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=600,
+                    system=system,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": (
+                                "Напиши письмо для этого лида. "
+                                "Отвечай только JSON-ом."
+                            ),
+                        }
+                    ],
+                )
+                raw = msg.content[0].text  # type: ignore[union-attr]
+                data = _extract_json(raw) or {}
+        except Exception:  # noqa: BLE001
+            logger.exception("generate_cold_email failed")
+            return _heuristic_email(lead, user_profile, clean_tone)
+
+        subject = _trim_or_none(data.get("subject")) or ""
+        body = _trim_or_none(data.get("body")) or ""
+        if not subject or not body:
+            return _heuristic_email(lead, user_profile, clean_tone)
+        return {"subject": subject, "body": body, "tone": clean_tone}
 
     async def base_insights(
         self,
