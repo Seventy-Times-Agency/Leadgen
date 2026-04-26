@@ -294,12 +294,48 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=404, detail="token not found")
             token_row, user = row
             now = datetime.now(timezone.utc)
-            if token_row.used_at is not None:
-                raise HTTPException(status_code=410, detail="token already used")
+            already_used = token_row.used_at is not None
             expires = token_row.expires_at
             if expires.tzinfo is None:
                 expires = expires.replace(tzinfo=timezone.utc)
-            if now >= expires:
+            expired = now >= expires
+
+            # Idempotent re-click: if the token is already used AND
+            # the user is already verified (or in change_email mode,
+            # the pending email already landed on the user row), treat
+            # the request as success. This neutralises the email-
+            # scanner-burns-token problem: the scanner spent the token
+            # while pre-fetching, the user's actual click then sees
+            # "already used" — but the verification did happen, so
+            # we shouldn't block them.
+            if already_used and not expired:
+                if token_row.kind == "verify" and user.email_verified_at is not None:
+                    return AuthUser(
+                        user_id=user.id,
+                        first_name=user.first_name or "",
+                        last_name=user.last_name or "",
+                        email=user.email,
+                        email_verified=True,
+                        onboarded=_is_onboarded(user),
+                    )
+                if (
+                    token_row.kind == "change_email"
+                    and token_row.pending_email
+                    and user.email
+                    and user.email.lower() == token_row.pending_email.lower()
+                ):
+                    return AuthUser(
+                        user_id=user.id,
+                        first_name=user.first_name or "",
+                        last_name=user.last_name or "",
+                        email=user.email,
+                        email_verified=True,
+                        onboarded=_is_onboarded(user),
+                    )
+
+            if already_used:
+                raise HTTPException(status_code=410, detail="token already used")
+            if expired:
                 raise HTTPException(status_code=410, detail="token expired")
 
             token_row.used_at = now

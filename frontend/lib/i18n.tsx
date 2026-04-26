@@ -124,6 +124,11 @@ const TRANSLATIONS = {
     "auth.login.invalid": "Неверный email или пароль.",
 
     // Verify-email
+    "verify.idle.title": "Подтвердить email",
+    "verify.idle.body":
+      "Нажмите кнопку ниже чтобы подтвердить email. Это нужно потому что почтовые сервисы автоматически проверяют ссылки в письмах — если бы мы подтверждали при загрузке, токен сгорал бы до вашего клика.",
+    "verify.idle.cta": "Подтвердить email",
+    "verify.verifying.title": "Подтверждаем email…",
     "verify.pending.title": "Подтверждаем email…",
     "verify.pending.body": "Секунду — проверяем ссылку.",
     "verify.ok.title": "Email подтверждён",
@@ -133,6 +138,7 @@ const TRANSLATIONS = {
     "verify.error.title": "Не получилось подтвердить email",
     "verify.error.body":
       "Ссылка истекла или уже была использована. Запросите новую ссылку из баннера в рабочей зоне.",
+    "verify.error.retry": "Попробовать ещё раз",
     "verify.gotoLogin": "Перейти ко входу",
     "verifyBanner.title": "Подтвердите email ({email})",
     "verifyBanner.body":
@@ -657,6 +663,11 @@ const TRANSLATIONS = {
     "auth.field.passwordHint": "min 8 characters",
     "auth.login.invalid": "Invalid email or password.",
 
+    "verify.idle.title": "Confirm your email",
+    "verify.idle.body":
+      "Click the button below to confirm your email. We need an explicit click because email providers pre-scan links in messages — auto-verifying on page load would burn the token before you ever clicked it.",
+    "verify.idle.cta": "Confirm email",
+    "verify.verifying.title": "Verifying your email…",
     "verify.pending.title": "Verifying your email…",
     "verify.pending.body": "One sec — checking the link.",
     "verify.ok.title": "Email verified",
@@ -666,6 +677,7 @@ const TRANSLATIONS = {
     "verify.error.title": "Couldn't verify your email",
     "verify.error.body":
       "The link expired or was already used. Request a fresh one from the banner in your workspace.",
+    "verify.error.retry": "Try again",
     "verify.gotoLogin": "Go to login",
     "verifyBanner.title": "Verify your email ({email})",
     "verifyBanner.body":
