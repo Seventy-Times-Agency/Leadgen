@@ -68,6 +68,8 @@ from leadgen.adapters.web_api.schemas import (
     PriorTeamSearch,
     RegisterRequest,
     ResendVerificationRequest,
+    SearchAxesResponse,
+    SearchAxisOption,
     SearchCreate,
     SearchCreateResponse,
     SearchPreflightResponse,
@@ -956,19 +958,32 @@ def create_app() -> FastAPI:
                 session, body.user_id, body.team_id
             )
 
+        # Workspace isolation: in team mode Henry must NOT see the
+        # caller's personal profile (what they sell, their personal
+        # niches, region) — that's a different workspace and bleeding
+        # personal context into team chat is exactly what the user
+        # asked us to stop. We still pass display_name / gender so
+        # Henry can address the person properly.
         user_profile: dict[str, Any] = {}
         if user is not None:
-            user_profile = {
-                "display_name": user.display_name or user.first_name,
-                "age_range": user.age_range,
-                "gender": user.gender,
-                "business_size": user.business_size,
-                "profession": user.profession,
-                "service_description": user.service_description,
-                "home_region": user.home_region,
-                "niches": list(user.niches or []),
-                "language_code": user.language_code,
-            }
+            if body.team_id is None:
+                user_profile = {
+                    "display_name": user.display_name or user.first_name,
+                    "age_range": user.age_range,
+                    "gender": user.gender,
+                    "business_size": user.business_size,
+                    "profession": user.profession,
+                    "service_description": user.service_description,
+                    "home_region": user.home_region,
+                    "niches": list(user.niches or []),
+                    "language_code": user.language_code,
+                }
+            else:
+                user_profile = {
+                    "display_name": user.display_name or user.first_name,
+                    "gender": user.gender,
+                    "language_code": user.language_code,
+                }
 
         history = [m.model_dump() for m in body.messages]
         analyzer = AIAnalyzer()
@@ -1078,6 +1093,37 @@ def create_app() -> FastAPI:
                 await session.delete(row)
             await session.commit()
         return AssistantMemoryDeleteResponse(deleted=len(rows))
+
+    @app.post(
+        "/api/v1/search/suggest-axes",
+        response_model=SearchAxesResponse,
+    )
+    async def suggest_search_axes(user_id: int) -> SearchAxesResponse:
+        """Henry-proposed ready-to-launch search configurations.
+
+        Returns up to 4 ``{niche, region, ideal_customer, exclusions,
+        rationale}`` cards based on what we know about the user. Used
+        by the "Подобрать с Henry" button on /app/search to one-click
+        prefill the form when the user doesn't want to type.
+        """
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+            profile_dict = {
+                "service_description": user.service_description,
+                "profession": user.profession,
+                "home_region": user.home_region,
+                "business_size": user.business_size,
+                "niches": list(user.niches or []),
+            }
+        analyzer = AIAnalyzer()
+        options = await analyzer.suggest_search_axes(
+            profile_dict, max_results=4
+        )
+        return SearchAxesResponse(
+            options=[SearchAxisOption(**o) for o in options]
+        )
 
     @app.post(
         "/api/v1/users/{user_id}/suggest-niches",

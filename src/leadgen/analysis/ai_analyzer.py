@@ -1338,6 +1338,112 @@ class AIAnalyzer:
             return _heuristic_intent(text)
         return {"niches": niches, "region": region, "error": None}
 
+    async def suggest_search_axes(
+        self,
+        user_profile: dict[str, Any] | None,
+        max_results: int = 4,
+    ) -> list[dict[str, Any]]:
+        """Propose ready-to-launch search configurations for the user.
+
+        Uses everything we know about the user (what they sell, their
+        target niches, their home region) to come back with up to
+        ``max_results`` ``{niche, region, ideal_customer, exclusions}``
+        cards that they can one-click into the form.
+
+        Empty list when no API key or no profile signal at all.
+        """
+        profile = user_profile or {}
+        offer = (
+            profile.get("service_description")
+            or profile.get("profession")
+            or ""
+        ).strip()
+        niches = list(profile.get("niches") or [])
+        region = (profile.get("home_region") or "").strip()
+
+        if not (offer or niches or region):
+            return []
+        if self.client is None:
+            return []
+
+        seed_lines = []
+        if offer:
+            seed_lines.append(f"Что продаёт юзер: {offer}")
+        if niches:
+            seed_lines.append("Целевые ниши: " + ", ".join(niches))
+        if region:
+            seed_lines.append(f"Базовый регион: {region}")
+        seed = "\n".join(seed_lines)
+
+        system = (
+            "Ты — Henry, senior B2B sales-консультант. Юзер открыл "
+            "новую сессию поиска и хочет несколько ГОТОВЫХ к запуску "
+            "конфигураций. Учитывай его профиль, выдай "
+            f"{max_results} разных вариантов — РАЗНЫЕ по нише или "
+            "региону, не одно и то же с переименованной.\n\n"
+            "Каждая конфигурация:\n"
+            "- niche: 2-5 слов, конкретный тип бизнеса (НЕ «B2B»). "
+            "На языке оригинала.\n"
+            "- region: конкретный город (не страна, не «вся "
+            "Европа»). Если у юзера home_region — половина вариантов "
+            "локально, остальное — соседние / релевантные города.\n"
+            "- ideal_customer: 1-2 предложения с конкретикой "
+            "(размер, ценовой сегмент, цифровая зрелость).\n"
+            "- exclusions: 1 фраза или null.\n"
+            "- rationale: 1 короткое предложение почему этот вариант "
+            "имеет смысл под этого юзера.\n\n"
+            "Если у юзера региональный охват очевидно широкий "
+            "(онлайн-агентство, SaaS) — обязательно одна-две "
+            "карточки про менее очевидные города (не только NY/Berlin, "
+            "но Stamford, Boston, Wien, Amsterdam).\n\n"
+            "Формат ответа — СТРОГО JSON без markdown:\n"
+            '{"options": [{"niche": "…", "region": "…", '
+            '"ideal_customer": "…", "exclusions": "…|null", '
+            '"rationale": "…"}, …]}'
+        )
+
+        try:
+            async with self._sem:
+                msg = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=900,
+                    system=system,
+                    messages=[{"role": "user", "content": seed}],
+                )
+                raw = msg.content[0].text  # type: ignore[union-attr]
+                data = _extract_json(raw) or {}
+        except Exception:  # noqa: BLE001
+            logger.exception("suggest_search_axes failed")
+            return []
+
+        options = data.get("options") or []
+        if not isinstance(options, list):
+            return []
+        cleaned: list[dict[str, Any]] = []
+        for opt in options[: max_results * 2]:
+            if not isinstance(opt, dict):
+                continue
+            niche = _trim_or_none(opt.get("niche"))
+            opt_region = _trim_or_none(opt.get("region"))
+            if not niche or not opt_region:
+                continue
+            cleaned.append(
+                {
+                    "niche": niche[:80],
+                    "region": opt_region[:80],
+                    "ideal_customer": (
+                        _trim_or_none(opt.get("ideal_customer")) or None
+                    ),
+                    "exclusions": _trim_or_none(opt.get("exclusions")) or None,
+                    "rationale": (
+                        _trim_or_none(opt.get("rationale")) or None
+                    ),
+                }
+            )
+            if len(cleaned) >= max_results:
+                break
+        return cleaned
+
     async def consult_search(
         self,
         history: list[dict[str, str]],
@@ -1381,12 +1487,40 @@ class AIAnalyzer:
         )
 
         if not clean_history:
-            return {
-                "reply": (
+            # Personalised greeting when profile is filled — saves the
+            # user from re-typing what Henry already knows.
+            profile = user_profile or {}
+            niches = profile.get("niches") or []
+            region = profile.get("home_region")
+            profession = (
+                profile.get("profession") or profile.get("service_description")
+            )
+            if niches and region:
+                niches_preview = ", ".join(niches[:3])
+                reply = (
+                    f"Привет. Вижу — у вас в фокусе {niches_preview} "
+                    f"в {region}. С какой ниши сегодня начнём, или "
+                    "хотите подобрать что-то новое?"
+                )
+            elif niches:
+                niches_preview = ", ".join(niches[:3])
+                reply = (
+                    f"Привет. У вас в нишах {niches_preview}. С какой "
+                    "из них сегодня работаем и в каком городе?"
+                )
+            elif region and profession:
+                reply = (
+                    f"Привет. Знаю что вы продаёте {profession} в "
+                    f"{region}. Какой сегмент сегодня ищем?"
+                )
+            else:
+                reply = (
                     "Привет — расскажите, кого ищете: какая ниша, "
                     "в каком городе или регионе, и что именно делает "
                     "идеального клиента для вас."
-                ),
+                )
+            return {
+                "reply": reply,
                 "niche": carried_niche,
                 "region": carried_region,
                 "ideal_customer": carried_ideal,
@@ -1454,34 +1588,64 @@ class AIAnalyzer:
             "описывают ICP размыто и теряют время на холодных лидах. "
             "Твоя работа — копнуть один-два раза, пока запрос не станет "
             "конкретным, потом запускаем.\n\n"
+            "==============================================\n"
+            "ОПИРАЙСЯ НА ПРОФИЛЬ ЮЗЕРА (если он заполнен)\n"
+            "==============================================\n"
+            "Профиль продавца — что он продаёт, его регион, его ниши — "
+            "приклеен ниже системного промпта. Если он заполнен:\n"
+            "- НЕ переспрашивай то, что в нём уже есть. «Чем "
+            "занимаетесь?» / «На что охотитесь?» — это потеря времени.\n"
+            "- Открывай разговор персонализированно: «Вижу, у вас "
+            "{profession}, охотитесь на {ниши}. Под этот поиск возьмём "
+            "{одну из ниш} в {home_region}, или сегодня другой "
+            "сегмент?»\n"
+            "- Когда юзер просит «подбери варианты» / «что попробовать» "
+            "/ «не знаю с чего начать» — предлагай 2-3 конкретные "
+            "связки (niche+region) на базе его профиля. Учитывай его "
+            "целевые ниши. Если у юзера США → можно предложить не "
+            "только NY, но и Stamford, Boston, Austin. Если EU → не "
+            "только Berlin, но и Munich, Wien, Amsterdam.\n"
+            "- НЕ задавай вопрос если ответ уже виден из профиля.\n\n"
             "ОСИ КОТОРЫЕ НУЖНО ПРОЯСНИТЬ:\n"
             "1. niche — конкретный тип бизнеса (2-5 слов). Не «B2B», "
             "не «малый бизнес». «Стоматологическая клиника», "
             "«барбершоп».\n"
             "2. region — конкретный город. «Берлин», «Stamford, CT». "
             "Не страна, не «вся Европа». Если дают страну — переспроси "
-            "первый город для старта.\n"
+            "первый город для старта. Если город звучит подозрительно "
+            "(опечатка, несуществующее место) — переспроси: «Уточните "
+            "— это {что-то рядом из реальных}? Или другой город?» Не "
+            "запускай заведомо невалидный регион.\n"
             "3. ideal_customer — 1-3 предложения с конкретикой "
             "(размер бизнеса, ценовой сегмент, рейтинг, цифровая "
             "зрелость, триггеры покупки).\n"
             "4. exclusions — кого не нужно (сети, франшизы, "
             "уже отработанный сегмент).\n\n"
-            "ХОРОШИЙ FLOW:\n"
+            "ХОРОШИЙ FLOW (профиль ПУСТОЙ):\n"
             "Юзер: «Я ищу стоматологии».\n"
             "Ты: «Понял. В каком городе стартуем — и какой типичный "
             "успешный клиент у вас был, премиум или средний?» "
             "(last_asked_slot=region)\n"
-            "Юзер: «Берлин, премиум».\n"
-            "Ты: «Принял — премиум-стоматология в Берлине. По чему "
-            "лид считается горячим: рейтинг 4.5+, активный сайт, "
-            "соцсети — что важно? И кого избегаем — сети, франшизы?» "
-            "(last_asked_slot=ideal_customer)\n"
             "Юзер: «А что значит горячий лид?»\n"
             "Ты: «Лид с AI-скором ≥75 — сравниваем сайт, отзывы, "
-            "соцсети с вашим профилем. Так что важно для вас — "
-            "рейтинг, размер, что-то ещё?» "
-            "(slots не трогаем, last_asked_slot остаётся "
-            "ideal_customer)\n\n"
+            "соцсети с вашим профилем. Так что важно для вас?» "
+            "(slots не трогаем, last_asked_slot остаётся ideal_customer)\n\n"
+            "ХОРОШИЙ FLOW (профиль ЗАПОЛНЕН — ниши = roofing/tatto/nails, "
+            "регион = Stamford, продаёт AI-автоматизацию):\n"
+            "Юзер: первое сообщение / 'привет' / 'давай'.\n"
+            "Ты: «Привет. У вас в фокусе roofing/tattoo/nails в "
+            "Stamford. С какой ниши сегодня начнём — или хотите "
+            "попробовать что-то новое из соседних городов "
+            "(Norwalk, Bridgeport)?» (last_asked_slot=niche)\n"
+            "Юзер: «давай маникюр».\n"
+            "Ты: «Окей, nails salon в Stamford. По вашему профилю "
+            "целитесь в платежеспособных без своего сайта — "
+            "запустим с этим, или хотите уточнить ICP?» "
+            "(niche=nails salon, region=Stamford, "
+            "ideal_customer=платёжеспособные без сайта, "
+            "last_asked_slot=ideal_customer)\n"
+            "Юзер: «запускай».\n"
+            "Ты: «Понял, готово.» (ready=true)\n\n"
             "ГОТОВНОСТЬ К ЗАПУСКУ:\n"
             "ready=true только когда: niche есть короткой фразой; "
             "region — конкретный город; юзер либо ответил про идеального "

@@ -289,6 +289,12 @@ const TRANSLATIONS = {
       "Привет — я Henry, ваш AI-ассистент по лидам. Опишите кого ищете, и я соберу список за ~90 секунд.",
     "search.consult.greeting":
       "Привет, я Henry. Расскажите кого ищете: какая ниша, в каком городе, и что для вас идеальный лид. Я буду уточнять по ходу и сразу заполню форму справа.",
+    "search.consult.greetingNichesRegion":
+      "Привет. Вижу — у вас в фокусе {niches} в {region}. С какой ниши сегодня начнём, или хотите подобрать что-то новое?",
+    "search.consult.greetingNiches":
+      "Привет. У вас в нишах {niches}. С какой работаем сегодня и в каком городе?",
+    "search.consult.greetingRegionOffer":
+      "Привет. Знаю что вы работаете в {region}. Какой сегмент сегодня ищем?",
     "search.consult.placeholder": "Напишите Henry...",
     "search.consult.role": "AI-консультант по подбору лидов",
     "search.consult.thinking": "Думаю над ответом...",
@@ -360,6 +366,14 @@ const TRANSLATIONS = {
       "Понял — **{niche}** в **{region}**. Жмите «Запустить» когда готовы, или поправьте форму справа.",
     "search.chat.needBoth":
       "Укажите нишу и регион, например «кровельные компании в Нью-Йорке».",
+    "search.axes.eyebrow": "Подобрать с Henry",
+    "search.axes.subtitle":
+      "Получи 4 готовых конфигурации поиска под твой профиль — клик и форма заполнена.",
+    "search.axes.cta": "Подобрать",
+    "search.axes.ctaAgain": "Подобрать ещё",
+    "search.axes.hide": "Скрыть",
+    "search.axes.empty":
+      "Henry не смог подобрать варианты — заполните «что вы продаёте» в /app/profile и попробуйте снова.",
     "search.form.eyebrow": "Параметры поиска",
     "search.form.title": "Или заполните вручную",
     "search.form.subtitle": "Henry дозаполнит поля по ходу диалога.",
@@ -874,6 +888,12 @@ const TRANSLATIONS = {
       "Hi — I'm Henry, your Convioo copilot. Tell me who you're looking for and I'll build you a list in ~90 seconds.",
     "search.consult.greeting":
       "Hi, I'm Henry. Tell me who you're after — niche, city, and what makes an ideal lead. I'll ask follow-ups and fill in the form on the right as we go.",
+    "search.consult.greetingNichesRegion":
+      "Hi. I see you're focused on {niches} in {region}. Which niche do we start with today, or want to try something new?",
+    "search.consult.greetingNiches":
+      "Hi. Your niches are {niches}. Which one are we working today and in which city?",
+    "search.consult.greetingRegionOffer":
+      "Hi. I know you work in {region}. What segment are we hunting today?",
     "search.consult.placeholder": "Message Henry...",
     "search.consult.role": "AI lead-gen consultant",
     "search.consult.thinking": "Thinking...",
@@ -943,6 +963,14 @@ const TRANSLATIONS = {
       "Got it — **{niche}** in **{region}**. Click Launch when ready, or tweak the form on the right.",
     "search.chat.needBoth":
       'Tell me the niche and the region, e.g. "roofing companies in New York".',
+    "search.axes.eyebrow": "Pick with Henry",
+    "search.axes.subtitle":
+      "Get 4 ready-to-launch search configs based on your profile — click to autofill the form.",
+    "search.axes.cta": "Pick options",
+    "search.axes.ctaAgain": "Pick more",
+    "search.axes.hide": "Hide",
+    "search.axes.empty":
+      "Henry couldn't suggest configs — fill 'what you sell' in /app/profile and try again.",
     "search.form.eyebrow": "Search parameters",
     "search.form.title": "Or set it manually",
     "search.form.subtitle": "Henry auto-fills these as you chat.",
