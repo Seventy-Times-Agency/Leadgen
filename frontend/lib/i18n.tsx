@@ -195,6 +195,13 @@ const TRANSLATIONS = {
     "auth.field.age": "Возраст",
     "auth.field.ageHint": "по желанию — помогает AI подобрать тон",
     "auth.field.ageSkip": "Не указывать",
+    "auth.field.gender": "Пол",
+    "auth.field.genderHint":
+      "по желанию — Henry будет обращаться в правильном роде",
+    "auth.field.genderSkip": "Не указывать",
+    "auth.field.gender.male": "Мужской",
+    "auth.field.gender.female": "Женский",
+    "auth.field.gender.other": "Другой",
     "auth.inside.eyebrow": "Внутри",
     "auth.inside.body":
       "50 лидов с AI-оценкой в каждом поиске. Персонализировано под то, что продаёте именно вы.",
@@ -506,6 +513,7 @@ const TRANSLATIONS = {
     "profile.field.offerRaw": "Что вы продаёте (ваши слова)",
     "profile.field.niches": "Целевые ниши",
     "profile.field.age": "Возраст",
+    "profile.field.gender": "Пол",
     "profile.field.displayName": "Имя",
     "profile.empty": "Не указано",
     "profile.editor.title": "Редактирование профиля",
@@ -523,6 +531,10 @@ const TRANSLATIONS = {
     "profile.field.offerRawPh":
       "Опишите своими словами — какая услуга, для кого, в чём ценность.",
     "profile.field.nichesPh": "Добавьте нишу и Enter",
+    "profile.niches.suggest": "Подобрать с Henry",
+    "profile.niches.suggestAgain": "Подобрать ещё",
+    "profile.niches.suggestEmpty":
+      "Henry не нашёл подходящих ниш — уточните «что вы продаёте» и попробуйте снова.",
     "profile.nudge.title": "Заполните профиль для лучшего качества",
     "profile.nudge.body":
       "AI оценивает каждого лида под ваш профиль: чем понятнее что вы продаёте и кому, тем точнее hot/warm/cold и подача. Заполните вручную или поговорите с Henry — он умеет извлекать данные из обычного разговора.",
@@ -765,6 +777,13 @@ const TRANSLATIONS = {
     "auth.field.age": "Age",
     "auth.field.ageHint": "optional — helps AI pick the right tone",
     "auth.field.ageSkip": "Skip",
+    "auth.field.gender": "Gender",
+    "auth.field.genderHint":
+      "optional — Henry will use the right grammatical form",
+    "auth.field.genderSkip": "Skip",
+    "auth.field.gender.male": "Male",
+    "auth.field.gender.female": "Female",
+    "auth.field.gender.other": "Other",
     "auth.register.title": "Create your account.",
     "auth.register.subtitle":
       "Bare minimum to start — name, email, password. The rest gets dialled in inside the workspace.",
@@ -1072,6 +1091,7 @@ const TRANSLATIONS = {
     "profile.field.offerRaw": "What you sell (your words)",
     "profile.field.niches": "Target niches",
     "profile.field.age": "Age",
+    "profile.field.gender": "Gender",
     "profile.field.displayName": "Display name",
     "profile.empty": "Not set",
     "profile.editor.title": "Edit profile",
@@ -1089,6 +1109,10 @@ const TRANSLATIONS = {
     "profile.field.offerRawPh":
       "Describe in your own words — the service, who it's for, the value.",
     "profile.field.nichesPh": "Add a niche, hit Enter",
+    "profile.niches.suggest": "Pick with Henry",
+    "profile.niches.suggestAgain": "Pick more",
+    "profile.niches.suggestEmpty":
+      "Henry couldn't find matching niches — sharpen 'what you sell' and try again.",
     "profile.nudge.title": "Fill your profile for better results",
     "profile.nudge.body":
       "AI scores every lead against your profile — the clearer your offer and target, the sharper hot/warm/cold and pitch get. Fill it manually or chat with Henry — he extracts the data from a normal conversation.",

@@ -85,6 +85,23 @@ def _format_user_profile(profile: dict[str, Any] | None) -> str:
         parts.append(f"- Имя: {profile['display_name']}")
     if profile.get("age_range"):
         parts.append(f"- Возраст: {profile['age_range']}")
+    gender = profile.get("gender")
+    if gender == "male":
+        parts.append(
+            "- Пол: мужской → обращайся в мужском роде "
+            "(он, готов, увидел, сказал, добавил)."
+        )
+    elif gender == "female":
+        parts.append(
+            "- Пол: женский → обращайся в женском роде "
+            "(она, готова, увидела, сказала, добавила)."
+        )
+    elif gender == "other":
+        parts.append(
+            "- Пол: не определён → используй гендерно-нейтральные "
+            "формулировки (избегай родовых окончаний; «вы», «у вас», "
+            "«можно», «стоит» вместо «готов/готова»)."
+        )
     if profile.get("business_size"):
         label = _BUSINESS_SIZE_LABEL.get(
             profile["business_size"], profile["business_size"]
@@ -1175,6 +1192,91 @@ class AIAnalyzer:
             return text
         return cleaned
 
+    async def suggest_niches(
+        self,
+        user_profile: dict[str, Any] | None,
+        existing: list[str] | None = None,
+        max_results: int = 8,
+    ) -> list[str]:
+        """Propose target-niche options that fit the user's offer.
+
+        Returns up to ``max_results`` short search-style phrases
+        ("Стоматологические клиники", "SaaS-стартапы", "Барбершопы")
+        that map cleanly onto Google Maps queries. Already-saved
+        niches are excluded from the suggestion list so the user
+        sees fresh ideas.
+
+        Empty list on no API key / no profile description.
+        """
+        profile = user_profile or {}
+        seed = (
+            profile.get("service_description")
+            or profile.get("profession")
+            or ""
+        ).strip()
+        if not seed or self.client is None:
+            return []
+
+        skip_set = {n.strip().lower() for n in (existing or []) if n}
+
+        system = (
+            "Ты — Henry, senior B2B sales-консультант. На вход даётся "
+            "описание того что юзер продаёт; на выход — ровно "
+            f"{max_results} конкретных типов бизнеса (ниш), для которых "
+            "его услуга действительно полезна и которые легко находятся "
+            "по Google Maps.\n\n"
+            "Каждая ниша:\n"
+            "- 1-4 слова, конкретный тип бизнеса (не «B2B вообще»).\n"
+            "- На языке оригинального описания (русский / английский / …).\n"
+            "- Должна реально пересекаться с тем, что продаёт юзер. Не "
+            "бросай туда «всё подряд».\n"
+            "- Не повторяй ниши, которые юзер уже добавил (см. блок ниже).\n\n"
+            "Формат ответа — СТРОГО JSON без markdown:\n"
+            '{"niches": ["…", "…", "…"]}'
+        )
+        skip_block = ""
+        if skip_set:
+            skip_block = (
+                "\n\nУже выбраны (НЕ предлагай эти):\n"
+                + "\n".join(f"- {n}" for n in sorted(skip_set))
+            )
+
+        user_msg = f"Что продаёт юзер:\n{seed}{skip_block}"
+
+        try:
+            async with self._sem:
+                msg = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=400,
+                    system=system,
+                    messages=[{"role": "user", "content": user_msg}],
+                )
+                raw = msg.content[0].text  # type: ignore[union-attr]
+                data = _extract_json(raw) or {}
+        except Exception:  # noqa: BLE001
+            logger.exception("suggest_niches failed")
+            return []
+
+        niches = data.get("niches") or []
+        if not isinstance(niches, list):
+            return []
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for n in niches:
+            if not isinstance(n, str):
+                continue
+            text = n.strip().strip("\"'«»").strip()
+            if not text or len(text) > 80:
+                continue
+            key = text.lower()
+            if key in skip_set or key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(text)
+            if len(cleaned) >= max_results:
+                break
+        return cleaned
+
     async def extract_search_intent(self, description: str) -> dict[str, Any]:
         """Parse a free-form user description into structured search niches + region.
 
@@ -1427,19 +1529,48 @@ class AIAnalyzer:
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             logger.exception("consult_search failed")
-            return _heuristic_consult(clean_history)
+            fallback = _heuristic_consult(
+                clean_history, last_asked_slot=carried_slot
+            )
+            # Same carrying-forward as on the LLM path — the heuristic
+            # alone never has the full prior state.
+            fallback["niche"] = fallback.get("niche") or carried_niche
+            fallback["region"] = fallback.get("region") or carried_region
+            fallback["ideal_customer"] = (
+                fallback.get("ideal_customer") or carried_ideal
+            )
+            fallback["exclusions"] = (
+                fallback.get("exclusions") or carried_exclusions
+            )
+            fallback["ready"] = bool(
+                fallback["niche"] and fallback["region"]
+            )
+            return fallback
 
-        # Belt-and-braces: never let a turn drop a slot the user
-        # already confirmed. Even with the explicit prompt rule above,
-        # Claude occasionally returns null on a settled field — we
-        # carry the previous value forward instead of clearing it.
-        next_niche = _trim_or_none(data.get("niche")) or carried_niche
-        next_region = _trim_or_none(data.get("region")) or carried_region
-        next_ideal = (
-            _trim_or_none(data.get("ideal_customer")) or carried_ideal
+        # Hard slot guard: when Henry's previous turn was clearly waiting
+        # on a specific slot (carried_slot is set), THIS user reply is
+        # only allowed to update that one slot. Other slots stay carried
+        # — even if the LLM tried to extract something into them. This
+        # is the brace under the prompt-level discipline: it stops the
+        # "Henry asks ICP, user answers with a long ICP description, LLM
+        # latches onto the first noun and overwrites niche" failure mode
+        # we kept hitting in production.
+        #
+        # First turn (carried_slot is None) and turns where Henry isn't
+        # waiting on anything in particular fall back to the previous
+        # belt-and-braces "fill-or-keep" behaviour.
+        def pick(slot: str, llm_value: Any, carried: str | None) -> str | None:
+            if carried_slot and carried_slot != slot:
+                return carried
+            return _trim_or_none(llm_value) or carried
+
+        next_niche = pick("niche", data.get("niche"), carried_niche)
+        next_region = pick("region", data.get("region"), carried_region)
+        next_ideal = pick(
+            "ideal_customer", data.get("ideal_customer"), carried_ideal
         )
-        next_exclusions = (
-            _trim_or_none(data.get("exclusions")) or carried_exclusions
+        next_exclusions = pick(
+            "exclusions", data.get("exclusions"), carried_exclusions
         )
 
         next_slot_raw = _trim_or_none(data.get("last_asked_slot"))

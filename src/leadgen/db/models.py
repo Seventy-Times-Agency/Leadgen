@@ -86,6 +86,10 @@ class User(Base):
     # User profile — filled during onboarding, used to personalize AI advice
     display_name: Mapped[str | None] = mapped_column(String(64))
     age_range: Mapped[str | None] = mapped_column(String(16))
+    # Optional. One of: 'male' | 'female' | 'other'. Drives Henry's
+    # grammatical agreement (он/она) — never used for any kind of
+    # filtering or personalisation beyond that.
+    gender: Mapped[str | None] = mapped_column(String(16))
     business_size: Mapped[str | None] = mapped_column(String(32))
     profession: Mapped[str | None] = mapped_column(Text)
     service_description: Mapped[str | None] = mapped_column(Text)
