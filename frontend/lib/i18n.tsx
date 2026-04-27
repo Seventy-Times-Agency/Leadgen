@@ -289,6 +289,12 @@ const TRANSLATIONS = {
       "Привет — я Henry, ваш AI-ассистент по лидам. Опишите кого ищете, и я соберу список за ~90 секунд.",
     "search.consult.greeting":
       "Привет, я Henry. Расскажите кого ищете: какая ниша, в каком городе, и что для вас идеальный лид. Я буду уточнять по ходу и сразу заполню форму справа.",
+    "search.consult.greetingNichesRegion":
+      "Привет. Вижу — у вас в фокусе {niches} в {region}. С какой ниши сегодня начнём, или хотите подобрать что-то новое?",
+    "search.consult.greetingNiches":
+      "Привет. У вас в нишах {niches}. С какой работаем сегодня и в каком городе?",
+    "search.consult.greetingRegionOffer":
+      "Привет. Знаю что вы работаете в {region}. Какой сегмент сегодня ищем?",
     "search.consult.placeholder": "Напишите Henry...",
     "search.consult.role": "AI-консультант по подбору лидов",
     "search.consult.thinking": "Думаю над ответом...",
@@ -874,6 +880,12 @@ const TRANSLATIONS = {
       "Hi — I'm Henry, your Convioo copilot. Tell me who you're looking for and I'll build you a list in ~90 seconds.",
     "search.consult.greeting":
       "Hi, I'm Henry. Tell me who you're after — niche, city, and what makes an ideal lead. I'll ask follow-ups and fill in the form on the right as we go.",
+    "search.consult.greetingNichesRegion":
+      "Hi. I see you're focused on {niches} in {region}. Which niche do we start with today, or want to try something new?",
+    "search.consult.greetingNiches":
+      "Hi. Your niches are {niches}. Which one are we working today and in which city?",
+    "search.consult.greetingRegionOffer":
+      "Hi. I know you work in {region}. What segment are we hunting today?",
     "search.consult.placeholder": "Message Henry...",
     "search.consult.role": "AI lead-gen consultant",
     "search.consult.thinking": "Thinking...",

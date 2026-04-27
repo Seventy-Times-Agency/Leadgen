@@ -94,6 +94,37 @@ function NewSearchInner() {
         if (p.service_description?.trim()) {
           setOfferSource("profile");
         }
+        // Personalised greeting: replace the generic "расскажите кого
+        // ищете" with one that references the niches / region / offer
+        // already on the profile, so Henry doesn't ask things he
+        // already knows. Only fires while the chat is still pristine
+        // (one bot message, no user replies yet).
+        setMessages((prev) => {
+          if (prev.length !== 1 || prev[0].role !== "assistant") return prev;
+          const niches = (p.niches ?? []).slice(0, 3);
+          const region = (p.home_region ?? "").trim();
+          const offer = (
+            p.profession ??
+            p.service_description ??
+            ""
+          ).trim();
+          let greeting = t("search.consult.greeting");
+          if (niches.length > 0 && region) {
+            greeting = t("search.consult.greetingNichesRegion", {
+              niches: niches.join(", "),
+              region,
+            });
+          } else if (niches.length > 0) {
+            greeting = t("search.consult.greetingNiches", {
+              niches: niches.join(", "),
+            });
+          } else if (region && offer) {
+            greeting = t("search.consult.greetingRegionOffer", {
+              region,
+            });
+          }
+          return [{ role: "assistant", content: greeting }];
+        });
       })
       .catch(() => {
         // Profile fetch failure is non-fatal — fall through to the
@@ -102,7 +133,7 @@ function NewSearchInner() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   // Hard rule: in team mode, the same niche+region can't be re-run.
   // Preflight against the backend whenever the combo settles down so
