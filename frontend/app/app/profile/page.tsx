@@ -278,14 +278,15 @@ export default function ProfilePage() {
                 gap: 18,
               }}
             >
+              <Field
+                label={t("profile.field.displayName")}
+                value={profile.display_name || empty}
+              />
+              <Field label={t("profile.field.age")} value={ageLabel} />
               <Field label={t("profile.field.business")} value={sizeLabel} />
               <Field
                 label={t("profile.field.region")}
                 value={profile.home_region || empty}
-              />
-              <Field
-                label={t("profile.field.offer")}
-                value={profile.profession || empty}
               />
               <Field
                 label={t("profile.field.niches")}
@@ -294,11 +295,6 @@ export default function ProfilePage() {
                     ? profile.niches.join(", ")
                     : empty
                 }
-              />
-              <Field label={t("profile.field.age")} value={ageLabel} />
-              <Field
-                label={t("profile.field.displayName")}
-                value={profile.display_name || empty}
               />
             </div>
             {profile.service_description && (
