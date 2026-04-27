@@ -703,6 +703,183 @@ const TRANSLATIONS = {
     "legal.cookies.control.title": "Управление",
     "legal.cookies.control.body":
       "Вы всегда можете очистить cookies в настройках браузера. Если убрать сессионные cookies — придётся заново войти в аккаунт.",
+
+    // Public marketing pages — shared chrome
+    "public.nav.pricing": "Тарифы",
+    "public.nav.help": "Помощь",
+    "public.nav.changelog": "Что нового",
+    "public.nav.signIn": "Войти",
+    "public.nav.start": "Начать бесплатно",
+
+    // Pricing
+    "pricing.headline": "Простые тарифы — без сюрпризов",
+    "pricing.subhead":
+      "Сначала бесплатно попробуйте AI-поиск и оценку лидов. Платите только когда поймёте, что Convioo вписывается в процесс.",
+    "pricing.popular": "Популярный",
+
+    "pricing.free.name": "Free",
+    "pricing.free.tagline": "Чтобы посмотреть, как это работает",
+    "pricing.free.price": "$0",
+    "pricing.free.per": "/мес",
+    "pricing.free.cta": "Создать аккаунт",
+
+    "pricing.pro.name": "Personal Pro",
+    "pricing.pro.tagline": "Для соло-агентств и фрилансеров",
+    "pricing.pro.price": "$29",
+    "pricing.pro.per": "/мес",
+    "pricing.pro.cta": "Попробовать Pro",
+
+    "pricing.team.name": "Team",
+    "pricing.team.tagline": "Для команды до 5 менеджеров",
+    "pricing.team.price": "$79",
+    "pricing.team.per": "/мес",
+    "pricing.team.cta": "Завести команду",
+
+    "pricing.feat.searches5": "5 AI-поисков в месяц",
+    "pricing.feat.searches200": "200 AI-поисков в месяц",
+    "pricing.feat.searchesTeam": "500 AI-поисков на команду",
+    "pricing.feat.aiScore": "AI-скоринг по каждой компании",
+    "pricing.feat.henryConsult": "Helper Henry для уточнения ниши",
+    "pricing.feat.crmBasic": "Базовый CRM с заметками и статусами",
+    "pricing.feat.exportCsv": "Экспорт CSV/JSON",
+    "pricing.feat.outreachTemplates": "Библиотека шаблонов писем",
+    "pricing.feat.customFields": "Пользовательские поля у лидов",
+    "pricing.feat.dailyDigest": "Ежедневный дайджест по горячим лидам",
+    "pricing.feat.team5": "До 5 пользователей",
+    "pricing.feat.sharedCrm": "Общий CRM и дедуп лидов",
+    "pricing.feat.dedupTeam": "Лид не показывается двум менеджерам",
+    "pricing.feat.activityFeed": "Лента действий команды",
+    "pricing.feat.henryTeam": "Henry помнит контекст команды",
+
+    "pricing.faq.title": "Частые вопросы",
+    "pricing.faq.q1": "Что считается одним поиском?",
+    "pricing.faq.a1":
+      "Один запрос вида «маркетинговые агентства в Берлине». Возвращается до 60 компаний, каждая прогоняется через AI-скоринг — это и есть один кредит.",
+    "pricing.faq.q2": "Можно ли отменить подписку?",
+    "pricing.faq.a2":
+      "Да, в любой момент через личный кабинет. Деньги за неиспользованный период возвращаем по запросу.",
+    "pricing.faq.q3": "А есть пробный период у Pro?",
+    "pricing.faq.a3":
+      "Тариф Free уже даёт 5 настоящих поисков в месяц — этого хватит, чтобы понять, насколько Convioo попадает в вашу нишу.",
+    "pricing.faq.q4": "Что с GDPR и данными?",
+    "pricing.faq.a4":
+      "Все данные хранятся в EU-инфраструктуре. В разделе «Профиль» в один клик можно скачать полный экспорт или удалить аккаунт.",
+
+    // Help center
+    "help.title": "Помощь",
+    "help.subtitle":
+      "Короткие ответы на частые вопросы. Не нашли своё — напишите нам.",
+    "help.q.start": "С чего начать после регистрации?",
+    "help.a.start":
+      "Откройте «Новый поиск» в боковой панели, опишите свою нишу одной фразой и Henry поможет уточнить регион и аудиторию. Через минуту увидите первый список лидов с AI-скором.",
+    "help.q.search": "Как формулировать запрос для поиска?",
+    "help.a.search":
+      "Лучше всего работает «<тип бизнеса> в <город или регион>». Например, «кровельные компании в Бостоне» или «дентал-клиники в Праге».",
+    "help.q.import": "Можно загрузить свой список компаний?",
+    "help.a.import":
+      "Да, в разделе «Импорт» — загрузите CSV с колонками name / website / region. Convioo создаст отдельную сессию и подтянет AI-скор к каждой строке.",
+    "help.q.score": "Что означает AI-скор?",
+    "help.a.score":
+      "Это число от 0 до 100, где 70+ обычно «горячий» — компания соответствует вашему ICP, имеет признаки, что она готова к контакту, и нет красных флагов.",
+    "help.q.henry": "Кто такой Henry?",
+    "help.a.henry":
+      "Помощник на основе Claude. Он держит в голове ваш профиль и команду, помогает уточнять ниши, делает выжимку по конкретному лиду и подсказывает, чем зацепить.",
+    "help.q.team": "Как добавить коллег?",
+    "help.a.team":
+      "В разделе «Команда» создаёте рабочее пространство и отправляете приглашение по ссылке. Каждый член команды видит общую базу лидов с дедупликацией.",
+    "help.q.export": "Как выгрузить мои данные?",
+    "help.a.export":
+      "В «Профиле» → «Конфиденциальность и данные» нажмите «Экспорт моих данных». Получите JSON со всем профилем, лидами и активностью.",
+    "help.q.delete": "Как удалить аккаунт?",
+    "help.a.delete":
+      "Там же в «Профиле» — кнопка «Удалить аккаунт». Подтверждение по email и паролю; после этого все ваши данные удаляются мгновенно и без восстановления.",
+    "help.contact.title": "Не нашли ответа?",
+    "help.contact.body":
+      "Напишите нам — отвечаем обычно в течение рабочего дня.",
+
+    // Changelog
+    "changelog.title": "Что нового",
+    "changelog.subtitle":
+      "Заметные изменения в Convioo. Меньшие правки и фиксы — в pull request'ах.",
+    "changelog.r21.title": "GDPR-экспорт, юридические страницы и журнал активности",
+    "changelog.r21.b1":
+      "Скачивание полного дампа ваших данных в JSON одной кнопкой.",
+    "changelog.r21.b2":
+      "Удаление аккаунта с подтверждением по email и паролю.",
+    "changelog.r21.b3":
+      "Публичные страницы Privacy / Terms / Cookies на двух языках.",
+    "changelog.r21.b4":
+      "Журнал безопасности: вход, регистрация, экспорт и удаление видны в профиле.",
+    "changelog.r20.title": "CSV-импорт и поиск ЛПР",
+    "changelog.r20.b1":
+      "Загружайте свои списки компаний — Convioo создаст из них сессию и проскорит каждую строку.",
+    "changelog.r20.b2":
+      "Кнопка «Найти контакты ЛПР» в карточке лида: имя, должность, email и LinkedIn.",
+    "changelog.r20.b3":
+      "Любые лишние колонки CSV сохраняются как пользовательские поля у лида.",
+    "changelog.r19.title": "Henry стал активнее",
+    "changelog.r19.b1":
+      "AI-исследование конкретного лида прямо из чата с Henry.",
+    "changelog.r19.b2":
+      "Запуск нового поиска по диалогу — без перехода в форму.",
+    "changelog.r18.title": "CRM-зрелость",
+    "changelog.r18.b1": "Пользовательские поля под каждого лида.",
+    "changelog.r18.b2": "Таймлайн активности с источниками изменений.",
+    "changelog.r18.b3": "Задачи и напоминания, привязанные к лиду.",
+
+    // Comparison pages
+    "vs.eyebrow": "Сравнение",
+    "vs.headline": "Convioo против {competitor}",
+    "vs.col.feature": "Параметр",
+    "vs.row.pricing": "Цена",
+    "vs.row.aiScore": "AI-скоринг",
+    "vs.row.crm": "Встроенный CRM",
+    "vs.row.assistant": "AI-ассистент",
+    "vs.row.dataSource": "Источник данных",
+    "vs.row.audience": "Для кого",
+
+    "vs.convioo.pricing": "От $0 до $79/мес",
+    "vs.convioo.aiScore": "Скор и аналитика по каждой компании",
+    "vs.convioo.crm": "Заметки, статусы, задачи, активность",
+    "vs.convioo.assistant": "Henry помнит ваш профиль и команду",
+    "vs.convioo.dataSource": "Google Places + сайт + AI",
+    "vs.convioo.audience": "Маркетинговые агентства и SMB-команды",
+
+    "vs.apollo.name": "Apollo",
+    "vs.apollo.subhead":
+      "Apollo — большая база контактов и outbound-инструмент. Convioo фокусируется на AI-скоринге малых и локальных компаний по конкретной нише.",
+    "vs.apollo.pricing": "От $49/пользователь",
+    "vs.apollo.aiScore": "Базовый скоринг по списку",
+    "vs.apollo.crm": "Лёгкий CRM, sales-engagement",
+    "vs.apollo.assistant": "Не входит",
+    "vs.apollo.dataSource": "Своя база контактов",
+    "vs.apollo.audience": "B2B SaaS sales-команды",
+
+    "vs.clay.name": "Clay",
+    "vs.clay.subhead":
+      "Clay — мощный конструктор enrichment-таблиц. Convioo проще для маркетингового агентства: пара кликов и готовый отчёт по горячим лидам.",
+    "vs.clay.pricing": "От $149/мес",
+    "vs.clay.aiScore": "Через no-code workflow",
+    "vs.clay.crm": "Через интеграции",
+    "vs.clay.assistant": "AI-ассистент только для формул",
+    "vs.clay.dataSource": "Десятки источников через коннекторы",
+    "vs.clay.audience": "Growth/RevOps инженеры",
+
+    "vs.lusha.name": "Lusha",
+    "vs.lusha.subhead":
+      "Lusha — поставщик контактов и phone-данных. Convioo берёт на себя весь цикл: от подбора компаний до AI-аналитики и outreach-шаблонов.",
+    "vs.lusha.pricing": "От $39/пользователь",
+    "vs.lusha.aiScore": "Не входит",
+    "vs.lusha.crm": "Не входит",
+    "vs.lusha.assistant": "Не входит",
+    "vs.lusha.dataSource": "База контактов",
+    "vs.lusha.audience": "SDR-команды enterprise",
+
+    "vs.cta.title": "Готовы попробовать Convioo вместо {competitor}?",
+    "vs.cta.body":
+      "Бесплатный тариф включает 5 настоящих AI-поисков в месяц — этого достаточно, чтобы оценить разницу.",
+    "vs.cta.start": "Начать бесплатно",
+    "vs.cta.pricing": "Смотреть тарифы",
     "profile.field.business": "Размер бизнеса",
     "profile.field.region": "Домашний регион",
     "profile.field.offer": "Профессия / предложение",
@@ -1542,6 +1719,183 @@ const TRANSLATIONS = {
     "legal.cookies.control.title": "Controlling cookies",
     "legal.cookies.control.body":
       "You can clear cookies anytime in your browser settings. Removing session cookies will sign you out.",
+
+    // Public marketing pages — shared chrome
+    "public.nav.pricing": "Pricing",
+    "public.nav.help": "Help",
+    "public.nav.changelog": "Changelog",
+    "public.nav.signIn": "Sign in",
+    "public.nav.start": "Start free",
+
+    // Pricing
+    "pricing.headline": "Simple pricing — no surprises",
+    "pricing.subhead":
+      "Try the AI search and lead scoring for free first. Pay only when you've decided Convioo fits the way you work.",
+    "pricing.popular": "Popular",
+
+    "pricing.free.name": "Free",
+    "pricing.free.tagline": "To see how it works",
+    "pricing.free.price": "$0",
+    "pricing.free.per": "/mo",
+    "pricing.free.cta": "Create account",
+
+    "pricing.pro.name": "Personal Pro",
+    "pricing.pro.tagline": "For solo agencies and freelancers",
+    "pricing.pro.price": "$29",
+    "pricing.pro.per": "/mo",
+    "pricing.pro.cta": "Try Pro",
+
+    "pricing.team.name": "Team",
+    "pricing.team.tagline": "For teams up to 5 people",
+    "pricing.team.price": "$79",
+    "pricing.team.per": "/mo",
+    "pricing.team.cta": "Set up team",
+
+    "pricing.feat.searches5": "5 AI searches per month",
+    "pricing.feat.searches200": "200 AI searches per month",
+    "pricing.feat.searchesTeam": "500 AI searches per team",
+    "pricing.feat.aiScore": "AI scoring on every company",
+    "pricing.feat.henryConsult": "Helper Henry to refine the niche",
+    "pricing.feat.crmBasic": "Basic CRM with notes and statuses",
+    "pricing.feat.exportCsv": "CSV / JSON export",
+    "pricing.feat.outreachTemplates": "Outreach template library",
+    "pricing.feat.customFields": "Custom fields on leads",
+    "pricing.feat.dailyDigest": "Daily digest of hot leads",
+    "pricing.feat.team5": "Up to 5 users",
+    "pricing.feat.sharedCrm": "Shared CRM and lead deduplication",
+    "pricing.feat.dedupTeam": "A lead never shows up for two reps",
+    "pricing.feat.activityFeed": "Team activity feed",
+    "pricing.feat.henryTeam": "Henry remembers team context",
+
+    "pricing.faq.title": "Frequently asked",
+    "pricing.faq.q1": "What counts as one search?",
+    "pricing.faq.a1":
+      "One query like \"marketing agencies in Berlin\". Returns up to 60 companies, each scored by the AI — that's one credit.",
+    "pricing.faq.q2": "Can I cancel anytime?",
+    "pricing.faq.a2":
+      "Yes, from your account in one click. We refund the unused period on request.",
+    "pricing.faq.q3": "Is there a Pro trial?",
+    "pricing.faq.a3":
+      "Free already gives you 5 real searches a month — enough to see whether Convioo lands in your niche.",
+    "pricing.faq.q4": "What about GDPR and data?",
+    "pricing.faq.a4":
+      "Everything is hosted on EU infrastructure. From the profile page you can export all your data or delete the account in one click.",
+
+    // Help center
+    "help.title": "Help",
+    "help.subtitle":
+      "Short answers to common questions. Didn't find yours — send us a note.",
+    "help.q.start": "Where do I start after signing up?",
+    "help.a.start":
+      "Open \"New search\" in the sidebar, describe your niche in one phrase and Henry will help refine the region and audience. In a minute you'll see the first list of leads with AI scores.",
+    "help.q.search": "How should I phrase a search?",
+    "help.a.search":
+      "What works best is \"<business type> in <city or region>\". For example, \"roofing companies in Boston\" or \"dental clinics in Prague\".",
+    "help.q.import": "Can I upload my own list?",
+    "help.a.import":
+      "Yes — go to Import and upload a CSV with columns name / website / region. Convioo creates a new session and scores each row.",
+    "help.q.score": "What does the AI score mean?",
+    "help.a.score":
+      "A 0–100 number where 70+ usually means \"hot\" — the company matches your ICP, shows signs of being ready to be contacted, and has no red flags.",
+    "help.q.henry": "Who is Henry?",
+    "help.a.henry":
+      "An assistant powered by Claude. Henry remembers your profile and team, helps refine niches, summarises specific leads and suggests how to open the conversation.",
+    "help.q.team": "How do I add teammates?",
+    "help.a.team":
+      "Open Team, create a workspace and send an invite link. Each member sees the shared lead base with deduplication.",
+    "help.q.export": "How do I download my data?",
+    "help.a.export":
+      "From Profile → Privacy & data click Export my data. You'll get a JSON with your full profile, leads and activity.",
+    "help.q.delete": "How do I delete my account?",
+    "help.a.delete":
+      "Same place in Profile — Delete account. Confirms via email + password and removes everything immediately, with no recovery.",
+    "help.contact.title": "Didn't find an answer?",
+    "help.contact.body":
+      "Send us a note — we usually reply within a business day.",
+
+    // Changelog
+    "changelog.title": "Changelog",
+    "changelog.subtitle":
+      "Notable Convioo changes. Smaller fixes live in the pull requests.",
+    "changelog.r21.title": "GDPR export, legal pages and audit log",
+    "changelog.r21.b1":
+      "One-click JSON dump of all your data.",
+    "changelog.r21.b2":
+      "Account deletion with email and password confirmation.",
+    "changelog.r21.b3":
+      "Public Privacy / Terms / Cookies pages in two languages.",
+    "changelog.r21.b4":
+      "Security log: sign-ins, sign-ups, exports and deletions visible from the profile.",
+    "changelog.r20.title": "CSV import and decision-maker lookup",
+    "changelog.r20.b1":
+      "Upload your own list of companies — Convioo turns it into a session and scores each row.",
+    "changelog.r20.b2":
+      "Find decision-makers button on every lead: name, role, email and LinkedIn.",
+    "changelog.r20.b3":
+      "Any extra CSV columns are kept as custom fields on the lead.",
+    "changelog.r19.title": "Henry got more active",
+    "changelog.r19.b1":
+      "Per-lead AI research right from the chat with Henry.",
+    "changelog.r19.b2":
+      "Launch a new search from the conversation — no need to leave the chat.",
+    "changelog.r18.title": "CRM maturity",
+    "changelog.r18.b1": "Custom fields on every lead.",
+    "changelog.r18.b2": "Activity timeline with sourced changes.",
+    "changelog.r18.b3": "Tasks and reminders attached to a lead.",
+
+    // Comparison pages
+    "vs.eyebrow": "Comparison",
+    "vs.headline": "Convioo vs {competitor}",
+    "vs.col.feature": "Feature",
+    "vs.row.pricing": "Pricing",
+    "vs.row.aiScore": "AI scoring",
+    "vs.row.crm": "Built-in CRM",
+    "vs.row.assistant": "AI assistant",
+    "vs.row.dataSource": "Data source",
+    "vs.row.audience": "Built for",
+
+    "vs.convioo.pricing": "From $0 to $79/mo",
+    "vs.convioo.aiScore": "Score and analysis on every company",
+    "vs.convioo.crm": "Notes, statuses, tasks, activity",
+    "vs.convioo.assistant": "Henry remembers your profile and team",
+    "vs.convioo.dataSource": "Google Places + website + AI",
+    "vs.convioo.audience": "Marketing agencies and SMB teams",
+
+    "vs.apollo.name": "Apollo",
+    "vs.apollo.subhead":
+      "Apollo is a large contact database and outbound tool. Convioo focuses on AI-scoring small / local companies in your specific niche.",
+    "vs.apollo.pricing": "From $49 / user",
+    "vs.apollo.aiScore": "Basic scoring across the list",
+    "vs.apollo.crm": "Light CRM, sales engagement",
+    "vs.apollo.assistant": "Not included",
+    "vs.apollo.dataSource": "Own contact database",
+    "vs.apollo.audience": "B2B SaaS sales teams",
+
+    "vs.clay.name": "Clay",
+    "vs.clay.subhead":
+      "Clay is a powerful enrichment-table builder. Convioo is simpler for a marketing agency: a few clicks and a ready report on hot leads.",
+    "vs.clay.pricing": "From $149 / mo",
+    "vs.clay.aiScore": "Via no-code workflows",
+    "vs.clay.crm": "Through integrations",
+    "vs.clay.assistant": "AI assistant only for formulas",
+    "vs.clay.dataSource": "Dozens of sources via connectors",
+    "vs.clay.audience": "Growth / RevOps engineers",
+
+    "vs.lusha.name": "Lusha",
+    "vs.lusha.subhead":
+      "Lusha is a contact and phone-data provider. Convioo handles the whole flow: from picking companies to AI analysis and outreach templates.",
+    "vs.lusha.pricing": "From $39 / user",
+    "vs.lusha.aiScore": "Not included",
+    "vs.lusha.crm": "Not included",
+    "vs.lusha.assistant": "Not included",
+    "vs.lusha.dataSource": "Contact database",
+    "vs.lusha.audience": "Enterprise SDR teams",
+
+    "vs.cta.title": "Ready to try Convioo instead of {competitor}?",
+    "vs.cta.body":
+      "The free tier includes 5 real AI searches a month — enough to feel the difference.",
+    "vs.cta.start": "Start free",
+    "vs.cta.pricing": "See pricing",
     "profile.field.business": "Business size",
     "profile.field.region": "Home region",
     "profile.field.offer": "Profession / offer",
