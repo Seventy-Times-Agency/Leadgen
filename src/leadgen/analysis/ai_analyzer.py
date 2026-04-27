@@ -1427,19 +1427,48 @@ class AIAnalyzer:
                 data = _extract_json(raw) or {}
         except Exception:  # noqa: BLE001
             logger.exception("consult_search failed")
-            return _heuristic_consult(clean_history)
+            fallback = _heuristic_consult(
+                clean_history, last_asked_slot=carried_slot
+            )
+            # Same carrying-forward as on the LLM path — the heuristic
+            # alone never has the full prior state.
+            fallback["niche"] = fallback.get("niche") or carried_niche
+            fallback["region"] = fallback.get("region") or carried_region
+            fallback["ideal_customer"] = (
+                fallback.get("ideal_customer") or carried_ideal
+            )
+            fallback["exclusions"] = (
+                fallback.get("exclusions") or carried_exclusions
+            )
+            fallback["ready"] = bool(
+                fallback["niche"] and fallback["region"]
+            )
+            return fallback
 
-        # Belt-and-braces: never let a turn drop a slot the user
-        # already confirmed. Even with the explicit prompt rule above,
-        # Claude occasionally returns null on a settled field — we
-        # carry the previous value forward instead of clearing it.
-        next_niche = _trim_or_none(data.get("niche")) or carried_niche
-        next_region = _trim_or_none(data.get("region")) or carried_region
-        next_ideal = (
-            _trim_or_none(data.get("ideal_customer")) or carried_ideal
+        # Hard slot guard: when Henry's previous turn was clearly waiting
+        # on a specific slot (carried_slot is set), THIS user reply is
+        # only allowed to update that one slot. Other slots stay carried
+        # — even if the LLM tried to extract something into them. This
+        # is the brace under the prompt-level discipline: it stops the
+        # "Henry asks ICP, user answers with a long ICP description, LLM
+        # latches onto the first noun and overwrites niche" failure mode
+        # we kept hitting in production.
+        #
+        # First turn (carried_slot is None) and turns where Henry isn't
+        # waiting on anything in particular fall back to the previous
+        # belt-and-braces "fill-or-keep" behaviour.
+        def pick(slot: str, llm_value: Any, carried: str | None) -> str | None:
+            if carried_slot and carried_slot != slot:
+                return carried
+            return _trim_or_none(llm_value) or carried
+
+        next_niche = pick("niche", data.get("niche"), carried_niche)
+        next_region = pick("region", data.get("region"), carried_region)
+        next_ideal = pick(
+            "ideal_customer", data.get("ideal_customer"), carried_ideal
         )
-        next_exclusions = (
-            _trim_or_none(data.get("exclusions")) or carried_exclusions
+        next_exclusions = pick(
+            "exclusions", data.get("exclusions"), carried_exclusions
         )
 
         next_slot_raw = _trim_or_none(data.get("last_asked_slot"))
