@@ -27,9 +27,9 @@ from typing import Any
 import sqlalchemy as sa
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 from sqlalchemy import func, select, update
 from sqlalchemy import text as sa_text
@@ -37,11 +37,15 @@ from sqlalchemy.exc import IntegrityError
 
 from leadgen.adapters.web_api.schemas import (
     WEB_DEMO_USER_ID,
+    AccountDeleteRequest,
+    AccountDeleteResponse,
     AssistantMemoryDeleteResponse,
     AssistantMemoryItem,
     AssistantMemoryListResponse,
     AssistantRequest,
     AssistantResponse,
+    AuditLogEntry,
+    AuditLogListResponse,
     AuthUser,
     ChangeEmailRequest,
     ChangePasswordRequest,
@@ -140,6 +144,7 @@ from leadgen.db.models import (
     TeamInvite,
     TeamMembership,
     User,
+    UserAuditLog,
 )
 from leadgen.db.session import _get_engine, session_factory
 from leadgen.pipeline.search import run_search_with_sinks
@@ -209,7 +214,7 @@ def create_app() -> FastAPI:
     # ── /api/v1/auth ───────────────────────────────────────────────────
 
     @app.post("/api/v1/auth/register", response_model=AuthUser)
-    async def register(body: RegisterRequest) -> AuthUser:
+    async def register(body: RegisterRequest, request: Request) -> AuthUser:
         """Sign up with email + password + first/last name (+ optional age).
 
         Minimal registration: name + email + password are required, an
@@ -281,6 +286,14 @@ def create_app() -> FastAPI:
                 )
 
             await _issue_and_send_verification(session, user)
+            await _record_audit(
+                session,
+                user_id=user.id,
+                action="auth.register",
+                request=request,
+                payload={"email": email},
+            )
+            await session.commit()
 
         return AuthUser(
             user_id=user.id,
@@ -292,7 +305,7 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/api/v1/auth/login", response_model=AuthUser)
-    async def login(body: LoginRequest) -> AuthUser:
+    async def login(body: LoginRequest, request: Request) -> AuthUser:
         """Email + password login. Returns the shared AuthUser shape."""
         email = body.email.strip().lower()
         async with session_factory() as session:
@@ -311,6 +324,13 @@ def create_app() -> FastAPI:
                 raise HTTPException(
                     status_code=401, detail="invalid email or password"
                 )
+            await _record_audit(
+                session,
+                user_id=user.id,
+                action="auth.login",
+                request=request,
+            )
+            await session.commit()
             return AuthUser(
                 user_id=user.id,
                 first_name=user.first_name or "",
@@ -613,6 +633,214 @@ def create_app() -> FastAPI:
             email_verified=user.email_verified_at is not None,
             onboarded=_is_onboarded(user),
         )
+
+    # ── /api/v1/users/{id}/gdpr ───────────────────────────────────────
+
+    @app.get("/api/v1/users/{user_id}/audit-log", response_model=AuditLogListResponse)
+    async def list_audit_log(user_id: int) -> AuditLogListResponse:
+        """Return the most recent 200 audit-log entries for a user."""
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+            rows = (
+                (
+                    await session.execute(
+                        select(UserAuditLog)
+                        .where(UserAuditLog.user_id == user_id)
+                        .order_by(UserAuditLog.created_at.desc())
+                        .limit(200)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            return AuditLogListResponse(
+                items=[AuditLogEntry.model_validate(r) for r in rows]
+            )
+
+    @app.get("/api/v1/users/{user_id}/export")
+    async def gdpr_export(user_id: int, request: Request) -> JSONResponse:
+        """Download a JSON dump of everything we store about this user.
+
+        Covers: profile, sessions, leads, custom fields, activity, tasks,
+        memories, marks, outreach templates, audit log. The file is a
+        plain JSON document the user can save / forward; we also write
+        an audit-log entry so the export itself is recorded.
+        """
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+            sessions = list(
+                (
+                    await session.execute(
+                        select(SearchQuery).where(SearchQuery.user_id == user_id)
+                    )
+                ).scalars()
+            )
+            leads = list(
+                (
+                    await session.execute(
+                        select(Lead).where(Lead.user_id == user_id)
+                    )
+                ).scalars()
+            )
+            custom_fields = list(
+                (
+                    await session.execute(
+                        select(LeadCustomField).where(
+                            LeadCustomField.user_id == user_id
+                        )
+                    )
+                ).scalars()
+            )
+            activities = list(
+                (
+                    await session.execute(
+                        select(LeadActivity).where(LeadActivity.user_id == user_id)
+                    )
+                ).scalars()
+            )
+            tasks = list(
+                (
+                    await session.execute(
+                        select(LeadTask).where(LeadTask.user_id == user_id)
+                    )
+                ).scalars()
+            )
+            memories = list(
+                (
+                    await session.execute(
+                        select(AssistantMemory).where(
+                            AssistantMemory.user_id == user_id
+                        )
+                    )
+                ).scalars()
+            )
+            marks = list(
+                (
+                    await session.execute(
+                        select(LeadMark).where(LeadMark.user_id == user_id)
+                    )
+                ).scalars()
+            )
+            templates = list(
+                (
+                    await session.execute(
+                        select(OutreachTemplate).where(
+                            OutreachTemplate.user_id == user_id
+                        )
+                    )
+                ).scalars()
+            )
+            audit = list(
+                (
+                    await session.execute(
+                        select(UserAuditLog)
+                        .where(UserAuditLog.user_id == user_id)
+                        .order_by(UserAuditLog.created_at.desc())
+                    )
+                ).scalars()
+            )
+
+            def _dt(value: Any) -> Any:
+                if isinstance(value, datetime):
+                    return value.isoformat()
+                if isinstance(value, uuid.UUID):
+                    return str(value)
+                return value
+
+            def _row(obj: Any) -> dict[str, Any]:
+                return {
+                    c.name: _dt(getattr(obj, c.name))
+                    for c in obj.__table__.columns
+                }
+
+            payload = {
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "user": _row(user),
+                "sessions": [_row(s) for s in sessions],
+                "leads": [_row(lead) for lead in leads],
+                "lead_custom_fields": [_row(c) for c in custom_fields],
+                "lead_activities": [_row(a) for a in activities],
+                "lead_tasks": [_row(t) for t in tasks],
+                "assistant_memories": [_row(m) for m in memories],
+                "lead_marks": [_row(m) for m in marks],
+                "outreach_templates": [_row(t) for t in templates],
+                "audit_log": [_row(a) for a in audit],
+            }
+
+            await _record_audit(
+                session,
+                user_id=user_id,
+                action="gdpr.export",
+                request=request,
+                payload={
+                    "leads": len(leads),
+                    "sessions": len(sessions),
+                },
+            )
+            await session.commit()
+
+            filename = f"convioo-export-user-{user_id}.json"
+            return JSONResponse(
+                content=payload,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"'
+                },
+            )
+
+    @app.delete(
+        "/api/v1/users/{user_id}",
+        response_model=AccountDeleteResponse,
+    )
+    async def delete_account(
+        user_id: int,
+        body: AccountDeleteRequest,
+        request: Request,
+    ) -> AccountDeleteResponse:
+        """Hard-delete a user account.
+
+        Requires the caller to confirm by retyping their email; if the
+        user has a password, that's verified too. ``ondelete=CASCADE``
+        on the FKs takes care of leads, sessions, custom fields and
+        the rest of the per-user data. The audit log row is written
+        BEFORE the cascade because deleting the user wipes its own
+        history. We log to a separate ``logger.warning`` line so ops
+        can still see deletions in the application logs.
+        """
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+            confirm = body.confirm_email.strip().lower()
+            if not user.email or confirm != user.email.lower():
+                raise HTTPException(
+                    status_code=400,
+                    detail="email does not match the account",
+                )
+            if user.password_hash and (
+                not body.password
+                or not _verify_password(body.password, user.password_hash)
+            ):
+                raise HTTPException(
+                    status_code=401, detail="password is incorrect"
+                )
+
+            logger.warning(
+                "account deletion: user_id=%s email=%s ip=%s",
+                user.id,
+                user.email,
+                _request_ip(request),
+            )
+
+            await session.delete(user)
+            await session.commit()
+
+        return AccountDeleteResponse(deleted=True)
 
     # ── /api/v1/teams ──────────────────────────────────────────────────
 
@@ -2945,6 +3173,50 @@ def _verify_password(plain: str, hashed: str) -> bool:
         return False
     except Exception:  # noqa: BLE001
         return False
+
+
+def _request_ip(request: Request | None) -> str | None:
+    if request is None:
+        return None
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()[:64]
+    if request.client and request.client.host:
+        return request.client.host[:64]
+    return None
+
+
+async def _record_audit(
+    session,
+    *,
+    user_id: int,
+    action: str,
+    request: Request | None = None,
+    payload: dict[str, Any] | None = None,
+) -> None:
+    """Append an entry to ``user_audit_logs``.
+
+    Best-effort: callers must commit the session themselves. Failures
+    are logged but never raised so an audit hiccup can't break a real
+    user-facing operation.
+    """
+    try:
+        ua = (
+            request.headers.get("user-agent")[:256]
+            if request is not None and request.headers.get("user-agent")
+            else None
+        )
+        session.add(
+            UserAuditLog(
+                user_id=user_id,
+                action=action[:64],
+                ip=_request_ip(request),
+                user_agent=ua,
+                payload=payload,
+            )
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("failed to record audit log entry")
 
 
 async def _issue_and_send_verification(session, user: User) -> None:

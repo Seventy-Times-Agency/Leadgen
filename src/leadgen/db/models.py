@@ -633,3 +633,31 @@ class LeadTask(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+class UserAuditLog(Base):
+    """Append-only audit trail of security-relevant user actions.
+
+    Captures sign-in, profile updates, GDPR exports, account deletions,
+    team-membership changes, etc. The ``ip`` column is best-effort —
+    populated from request headers when available, NULL otherwise.
+    """
+
+    __tablename__ = "user_audit_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    ip: Mapped[str | None] = mapped_column(String(64))
+    user_agent: Mapped[str | None] = mapped_column(String(256))
+    payload: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )

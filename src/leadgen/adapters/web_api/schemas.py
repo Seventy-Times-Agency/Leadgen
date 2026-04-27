@@ -801,3 +801,35 @@ class TeamMemberSummary(BaseModel):
     sessions_total: int
     leads_total: int
     hot_total: int
+
+
+class AuditLogEntry(BaseModel):
+    """Single row from ``user_audit_logs`` for the profile page."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    action: str
+    ip: str | None = None
+    user_agent: str | None = None
+    payload: dict[str, Any] | None = None
+    created_at: datetime
+
+
+class AuditLogListResponse(BaseModel):
+    items: list[AuditLogEntry]
+
+
+class AccountDeleteRequest(BaseModel):
+    """Confirmation payload for account deletion.
+
+    The user types their email into the modal; we compare against the
+    stored value before purging anything.
+    """
+
+    confirm_email: str = Field(..., min_length=3, max_length=320)
+    password: str | None = Field(default=None, max_length=200)
+
+
+class AccountDeleteResponse(BaseModel):
+    deleted: bool

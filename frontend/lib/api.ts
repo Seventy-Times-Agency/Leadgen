@@ -368,6 +368,44 @@ export async function updateMyProfile(
   });
 }
 
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  ip: string | null;
+  user_agent: string | null;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export async function listAuditLog(
+  userId?: number,
+): Promise<{ items: AuditLogEntry[] }> {
+  const id = userId ?? requireUserId();
+  return request<{ items: AuditLogEntry[] }>(
+    `/api/v1/users/${id}/audit-log`,
+  );
+}
+
+export function gdprExportUrl(userId?: number): string {
+  const id = userId ?? requireUserId();
+  return `${API_BASE}/api/v1/users/${id}/export`;
+}
+
+export async function deleteAccount(args: {
+  confirmEmail: string;
+  password?: string;
+  userId?: number;
+}): Promise<{ deleted: boolean }> {
+  const id = args.userId ?? requireUserId();
+  return request<{ deleted: boolean }>(`/api/v1/users/${id}`, {
+    method: "DELETE",
+    body: JSON.stringify({
+      confirm_email: args.confirmEmail,
+      password: args.password,
+    }),
+  });
+}
+
 export interface ConsultMessage {
   role: "user" | "assistant";
   content: string;
