@@ -594,6 +594,149 @@ export async function deleteOutreachTemplate(id: string): Promise<void> {
   );
 }
 
+// ── Lead custom fields, activity, tasks ────────────────────────────
+
+export interface LeadCustomField {
+  id: string;
+  lead_id: string;
+  user_id: number;
+  key: string;
+  value: string | null;
+  updated_at: string;
+}
+
+export async function listLeadCustomFields(
+  leadId: string,
+): Promise<{ items: LeadCustomField[] }> {
+  const params = new URLSearchParams({ user_id: String(requireUserId()) });
+  return request<{ items: LeadCustomField[] }>(
+    `/api/v1/leads/${leadId}/custom-fields?${params.toString()}`,
+  );
+}
+
+export async function upsertLeadCustomField(
+  leadId: string,
+  key: string,
+  value: string | null,
+): Promise<LeadCustomField> {
+  const params = new URLSearchParams({ user_id: String(requireUserId()) });
+  return request<LeadCustomField>(
+    `/api/v1/leads/${leadId}/custom-fields?${params.toString()}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ key, value }),
+    },
+  );
+}
+
+export async function deleteLeadCustomField(
+  leadId: string,
+  key: string,
+): Promise<void> {
+  const params = new URLSearchParams({ user_id: String(requireUserId()) });
+  await request<{ deleted: boolean }>(
+    `/api/v1/leads/${leadId}/custom-fields/${encodeURIComponent(key)}?${params.toString()}`,
+    { method: "DELETE" },
+  );
+}
+
+export type LeadActivityKind =
+  | "status"
+  | "notes"
+  | "assigned"
+  | "mark"
+  | "custom_field"
+  | "task"
+  | "created";
+
+export interface LeadActivity {
+  id: string;
+  lead_id: string;
+  user_id: number;
+  team_id: string | null;
+  kind: LeadActivityKind;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export async function listLeadActivity(
+  leadId: string,
+): Promise<{ items: LeadActivity[] }> {
+  return request<{ items: LeadActivity[] }>(
+    `/api/v1/leads/${leadId}/activity`,
+  );
+}
+
+export interface LeadTask {
+  id: string;
+  lead_id: string;
+  user_id: number;
+  content: string;
+  due_at: string | null;
+  done_at: string | null;
+  created_at: string;
+}
+
+export async function listLeadTasks(
+  leadId: string,
+): Promise<{ items: LeadTask[] }> {
+  const params = new URLSearchParams({ user_id: String(requireUserId()) });
+  return request<{ items: LeadTask[] }>(
+    `/api/v1/leads/${leadId}/tasks?${params.toString()}`,
+  );
+}
+
+export async function createLeadTask(
+  leadId: string,
+  content: string,
+  dueAt?: Date | null,
+): Promise<LeadTask> {
+  const params = new URLSearchParams({ user_id: String(requireUserId()) });
+  return request<LeadTask>(
+    `/api/v1/leads/${leadId}/tasks?${params.toString()}`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        content,
+        due_at: dueAt ? dueAt.toISOString() : null,
+      }),
+    },
+  );
+}
+
+export async function updateLeadTask(
+  taskId: string,
+  patch: { content?: string; due_at?: string | null; done?: boolean },
+): Promise<LeadTask> {
+  const params = new URLSearchParams({ user_id: String(requireUserId()) });
+  return request<LeadTask>(
+    `/api/v1/tasks/${taskId}?${params.toString()}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    },
+  );
+}
+
+export async function deleteLeadTask(taskId: string): Promise<void> {
+  const params = new URLSearchParams({ user_id: String(requireUserId()) });
+  await request<{ deleted: boolean }>(
+    `/api/v1/tasks/${taskId}?${params.toString()}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function listMyTasks(opts: { openOnly?: boolean } = {}): Promise<{
+  items: LeadTask[];
+}> {
+  const params = new URLSearchParams();
+  if (opts.openOnly !== undefined) params.set("open_only", String(opts.openOnly));
+  const qs = params.toString();
+  return request<{ items: LeadTask[] }>(
+    `/api/v1/users/${requireUserId()}/tasks${qs ? `?${qs}` : ""}`,
+  );
+}
+
 export interface SearchAxisOption {
   niche: string;
   region: string;

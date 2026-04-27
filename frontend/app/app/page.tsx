@@ -8,6 +8,7 @@ import { SessionRow } from "@/components/app/SessionRow";
 import {
   type DashboardStats,
   type Lead,
+  type LeadTask,
   type SearchSummary,
   type UserProfile,
   type WeeklyCheckin,
@@ -16,7 +17,9 @@ import {
   getSearches,
   getStats,
   getWeeklyCheckin,
+  listMyTasks,
   tempOf,
+  updateLeadTask,
 } from "@/lib/api";
 import { HenryAvatar } from "@/components/HenryAvatar";
 import {
@@ -178,6 +181,8 @@ export default function DashboardPage() {
         </div>
 
         <QuotaWidget tick={workspaceTick} />
+
+        <TodayTasksWidget tick={workspaceTick} />
 
         <HenryWeeklyCheckinCard tick={workspaceTick} />
 
@@ -592,6 +597,142 @@ function QuotaWidget({ tick }: { tick: number }) {
             transition: "width .25s ease",
           }}
         />
+      </div>
+    </div>
+  );
+}
+
+function TodayTasksWidget({ tick }: { tick: number }) {
+  const { t } = useLocale();
+  const [tasks, setTasks] = useState<LeadTask[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    listMyTasks({ openOnly: true })
+      .then((r) => !cancelled && setTasks(r.items))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [tick, refreshTick]);
+
+  if (tasks === null || tasks.length === 0) return null;
+
+  // Tasks today + overdue first; everything else under "later".
+  const now = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const dueSoon = tasks.filter(
+    (t) =>
+      !t.due_at || new Date(t.due_at).getTime() - now < dayMs,
+  );
+  const later = tasks.filter(
+    (t) => t.due_at && new Date(t.due_at).getTime() - now >= dayMs,
+  );
+
+  const toggle = async (task: LeadTask) => {
+    setBusy(true);
+    try {
+      await updateLeadTask(task.id, { done: !task.done_at });
+      setRefreshTick((n) => n + 1);
+    } catch {
+      // silent
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fmt = (iso: string | null): string => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const diff = d.getTime() - now;
+    if (diff < 0 && Math.abs(diff) < dayMs) return t("tasks.overdue");
+    if (diff < dayMs && diff >= 0) return t("tasks.today");
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
+
+  return (
+    <div className="card" style={{ padding: 18, marginBottom: 16 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 10,
+        }}
+      >
+        <div className="eyebrow">{t("tasks.todayTitle")}</div>
+        <span
+          className="chip"
+          style={{ fontSize: 11, padding: "2px 8px" }}
+        >
+          {tasks.length}
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {[...dueSoon, ...later].slice(0, 8).map((task) => {
+          const dueLabel = fmt(task.due_at);
+          const overdue =
+            !task.done_at &&
+            task.due_at &&
+            new Date(task.due_at).getTime() < now;
+          return (
+            <div
+              key={task.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "6px 10px",
+                background: "var(--surface-2)",
+                borderRadius: 8,
+              }}
+            >
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => toggle(task)}
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: 5,
+                  border: "1px solid var(--border-strong)",
+                  background: "var(--surface)",
+                  cursor: "pointer",
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+                aria-label="done"
+              />
+              <div
+                style={{
+                  flex: 1,
+                  fontSize: 13,
+                  color: "var(--text)",
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {task.content}
+              </div>
+              {dueLabel && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: overdue ? "var(--cold)" : "var(--text-muted)",
+                    flexShrink: 0,
+                  }}
+                >
+                  {dueLabel}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
