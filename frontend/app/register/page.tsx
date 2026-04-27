@@ -20,6 +20,12 @@ function consumeReturnTo(): string | null {
   return raw;
 }
 
+const GENDER_OPTIONS: { code: string; labelKey: TranslationKey }[] = [
+  { code: "male", labelKey: "auth.field.gender.male" },
+  { code: "female", labelKey: "auth.field.gender.female" },
+  { code: "other", labelKey: "auth.field.gender.other" },
+];
+
 const AGE_OPTIONS: { code: string; labelKey: TranslationKey }[] = [
   { code: "<18", labelKey: "onboarding.age.lt18" },
   { code: "18-24", labelKey: "onboarding.age.18_24" },
@@ -37,6 +43,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [ageRange, setAgeRange] = useState<string | null>(null);
+  const [gender, setGender] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -58,6 +65,7 @@ export default function RegisterPage() {
         email: email.trim().toLowerCase(),
         password,
         ageRange,
+        gender,
       });
       setCurrentUser(user);
       // Backend stamps onboarded_at on register, so the user lands on
@@ -177,6 +185,55 @@ export default function RegisterPage() {
               }}
             >
               {t("auth.field.ageSkip")}
+            </button>
+          </div>
+        </Field>
+        <Field
+          label={t("auth.field.gender")}
+          hint={t("auth.field.genderHint")}
+        >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {GENDER_OPTIONS.map((opt) => {
+              const active = gender === opt.code;
+              return (
+                <button
+                  key={opt.code}
+                  type="button"
+                  onClick={() => setGender(active ? null : opt.code)}
+                  style={{
+                    padding: "7px 13px",
+                    fontSize: 13,
+                    borderRadius: 999,
+                    cursor: "pointer",
+                    border: active
+                      ? "1px solid var(--accent)"
+                      : "1px solid var(--border)",
+                    background: active
+                      ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                      : "var(--surface)",
+                    color: active ? "var(--accent)" : "var(--text)",
+                    fontWeight: active ? 600 : 500,
+                  }}
+                >
+                  {t(opt.labelKey)}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setGender(null)}
+              style={{
+                padding: "7px 13px",
+                fontSize: 13,
+                borderRadius: 999,
+                cursor: "pointer",
+                border: "1px solid transparent",
+                background: "transparent",
+                color: "var(--text-dim)",
+                fontWeight: 500,
+              }}
+            >
+              {t("auth.field.genderSkip")}
             </button>
           </div>
         </Field>

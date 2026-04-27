@@ -37,6 +37,12 @@ const SIZE_OPTIONS: { code: string; labelKey: TranslationKey }[] = [
   { code: "large", labelKey: "onboarding.size.large" },
 ];
 
+const GENDER_OPTIONS: { code: string; labelKey: TranslationKey }[] = [
+  { code: "male", labelKey: "auth.field.gender.male" },
+  { code: "female", labelKey: "auth.field.gender.female" },
+  { code: "other", labelKey: "auth.field.gender.other" },
+];
+
 const AGE_LABEL_KEY: Record<string, TranslationKey> = Object.fromEntries(
   AGE_OPTIONS.map((o) => [o.code, o.labelKey]),
 );
@@ -45,9 +51,14 @@ const SIZE_LABEL_KEY: Record<string, TranslationKey> = Object.fromEntries(
   SIZE_OPTIONS.map((o) => [o.code, o.labelKey]),
 );
 
+const GENDER_LABEL_KEY: Record<string, TranslationKey> = Object.fromEntries(
+  GENDER_OPTIONS.map((o) => [o.code, o.labelKey]),
+);
+
 interface DraftState {
   display_name: string;
   age_range: string | null;
+  gender: string | null;
   business_size: string | null;
   service_description: string;
   home_region: string;
@@ -58,6 +69,7 @@ function profileToDraft(p: UserProfile): DraftState {
   return {
     display_name: p.display_name ?? "",
     age_range: p.age_range,
+    gender: p.gender,
     business_size: p.business_size,
     service_description: p.service_description ?? "",
     home_region: p.home_region ?? "",
@@ -97,6 +109,12 @@ export default function ProfilePage() {
     const key = SIZE_LABEL_KEY[profile.business_size];
     return key ? t(key) : profile.business_size;
   }, [profile?.business_size, empty, t]);
+
+  const genderLabel = useMemo(() => {
+    if (!profile?.gender) return empty;
+    const key = GENDER_LABEL_KEY[profile.gender];
+    return key ? t(key) : profile.gender;
+  }, [profile?.gender, empty, t]);
 
   const startEdit = () => {
     if (!profile) return;
@@ -152,6 +170,7 @@ export default function ProfilePage() {
       const patch: UserProfileUpdate = {
         display_name: draft.display_name.trim() || null,
         age_range: draft.age_range,
+        gender: draft.gender,
         business_size: draft.business_size,
         service_description: draft.service_description.trim() || null,
         home_region: draft.home_region.trim() || null,
@@ -283,6 +302,7 @@ export default function ProfilePage() {
                 value={profile.display_name || empty}
               />
               <Field label={t("profile.field.age")} value={ageLabel} />
+              <Field label={t("profile.field.gender")} value={genderLabel} />
               <Field label={t("profile.field.business")} value={sizeLabel} />
               <Field
                 label={t("profile.field.region")}
@@ -346,6 +366,17 @@ export default function ProfilePage() {
                 }))}
                 value={draft.age_range}
                 onChange={(v) => setDraft({ ...draft, age_range: v })}
+              />
+            </EditorField>
+
+            <EditorField label={t("profile.field.gender")}>
+              <ChipPicker
+                options={GENDER_OPTIONS.map((o) => ({
+                  value: o.code,
+                  label: t(o.labelKey),
+                }))}
+                value={draft.gender}
+                onChange={(v) => setDraft({ ...draft, gender: v })}
               />
             </EditorField>
 

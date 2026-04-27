@@ -158,6 +158,7 @@ export interface UserProfile {
   last_name: string;
   display_name: string | null;
   age_range: string | null;
+  gender: string | null;
   business_size: string | null;
   profession: string | null;
   service_description: string | null;
@@ -170,6 +171,7 @@ export interface UserProfile {
 export interface UserProfileUpdate {
   display_name?: string | null;
   age_range?: string | null;
+  gender?: string | null;
   business_size?: string | null;
   service_description?: string | null;
   home_region?: string | null;
@@ -278,6 +280,7 @@ export async function registerUser(args: {
   email: string;
   password: string;
   ageRange?: string | null;
+  gender?: string | null;
 }): Promise<AuthUser> {
   return request<AuthUser>("/api/v1/auth/register", {
     method: "POST",
@@ -287,6 +290,7 @@ export async function registerUser(args: {
       email: args.email,
       password: args.password,
       age_range: args.ageRange ?? null,
+      gender: args.gender ?? null,
     }),
   });
 }

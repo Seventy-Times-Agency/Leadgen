@@ -85,6 +85,23 @@ def _format_user_profile(profile: dict[str, Any] | None) -> str:
         parts.append(f"- Имя: {profile['display_name']}")
     if profile.get("age_range"):
         parts.append(f"- Возраст: {profile['age_range']}")
+    gender = profile.get("gender")
+    if gender == "male":
+        parts.append(
+            "- Пол: мужской → обращайся в мужском роде "
+            "(он, готов, увидел, сказал, добавил)."
+        )
+    elif gender == "female":
+        parts.append(
+            "- Пол: женский → обращайся в женском роде "
+            "(она, готова, увидела, сказала, добавила)."
+        )
+    elif gender == "other":
+        parts.append(
+            "- Пол: не определён → используй гендерно-нейтральные "
+            "формулировки (избегай родовых окончаний; «вы», «у вас», "
+            "«можно», «стоит» вместо «готов/готова»)."
+        )
     if profile.get("business_size"):
         label = _BUSINESS_SIZE_LABEL.get(
             profile["business_size"], profile["business_size"]

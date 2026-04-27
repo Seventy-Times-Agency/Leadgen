@@ -24,6 +24,7 @@ class RegisterRequest(BaseModel):
     email: str = Field(..., min_length=4, max_length=255)
     password: str = Field(..., min_length=8, max_length=200)
     age_range: str | None = Field(default=None, max_length=16)
+    gender: str | None = Field(default=None, max_length=16)
 
 
 class LoginRequest(BaseModel):
@@ -84,6 +85,7 @@ class UserProfile(BaseModel):
     last_name: str
     display_name: str | None
     age_range: str | None
+    gender: str | None
     business_size: str | None
     profession: str | None
     service_description: str | None
@@ -103,6 +105,7 @@ class UserProfileUpdate(BaseModel):
 
     display_name: str | None = Field(default=None, max_length=128)
     age_range: str | None = Field(default=None, max_length=16)
+    gender: str | None = Field(default=None, max_length=16)
     business_size: str | None = Field(default=None, max_length=32)
     # Cap at 800 chars — Pydantic rejects with a clear 422 if the user
     # bypasses the frontend counter, and the DB column is now TEXT
