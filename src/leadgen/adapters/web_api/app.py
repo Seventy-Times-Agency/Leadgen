@@ -53,13 +53,19 @@ from leadgen.adapters.web_api.schemas import (
     InviteCreateRequest,
     InvitePreview,
     InviteResponse,
+    LeadActivityListResponse,
     LeadBulkUpdateRequest,
     LeadBulkUpdateResponse,
+    LeadCustomFieldsResponse,
+    LeadCustomFieldUpsert,
     LeadEmailDraftRequest,
     LeadEmailDraftResponse,
     LeadListResponse,
     LeadMarkRequest,
     LeadResponse,
+    LeadTaskCreate,
+    LeadTaskListResponse,
+    LeadTaskUpdate,
     LeadUpdate,
     LoginRequest,
     MembershipUpdateRequest,
@@ -89,6 +95,15 @@ from leadgen.adapters.web_api.schemas import (
     WeeklyCheckinResponse,
 )
 from leadgen.adapters.web_api.schemas import (
+    LeadActivity as LeadActivitySchema,
+)
+from leadgen.adapters.web_api.schemas import (
+    LeadCustomField as LeadCustomFieldSchema,
+)
+from leadgen.adapters.web_api.schemas import (
+    LeadTask as LeadTaskSchema,
+)
+from leadgen.adapters.web_api.schemas import (
     OutreachTemplate as OutreachTemplateSchema,
 )
 from leadgen.adapters.web_api.sinks import WebDeliverySink
@@ -111,7 +126,10 @@ from leadgen.db.models import (
     AssistantMemory,
     EmailVerificationToken,
     Lead,
+    LeadActivity,
+    LeadCustomField,
     LeadMark,
+    LeadTask,
     OutreachTemplate,
     SearchQuery,
     Team,
@@ -1833,33 +1851,358 @@ def create_app() -> FastAPI:
         )
 
     @app.patch("/api/v1/leads/{lead_id}", response_model=LeadResponse)
-    async def update_lead(lead_id: uuid.UUID, body: LeadUpdate) -> LeadResponse:
-        """Partial update: status, owner, notes. Touches last_touched_at."""
-        changes: dict[str, Any] = {}
-        if body.lead_status is not None:
-            if body.lead_status not in {"new", "contacted", "replied", "won", "archived"}:
-                raise HTTPException(
-                    status_code=400,
-                    detail="lead_status must be one of new/contacted/replied/won/archived",
-                )
-            changes["lead_status"] = body.lead_status
-        if body.owner_user_id is not None or "owner_user_id" in body.model_fields_set:
-            changes["owner_user_id"] = body.owner_user_id
-        if body.notes is not None:
-            changes["notes"] = body.notes
-        if not changes:
-            raise HTTPException(status_code=400, detail="no fields to update")
-        changes["last_touched_at"] = datetime.now(timezone.utc)
+    async def update_lead(
+        lead_id: uuid.UUID,
+        body: LeadUpdate,
+        actor_user_id: int = WEB_DEMO_USER_ID,
+    ) -> LeadResponse:
+        """Partial update: status, owner, notes. Touches last_touched_at.
+
+        Now also writes an entry to ``lead_activities`` per changed
+        field so the timeline + team feed have something to render.
+        ``actor_user_id`` (query string) is the user making the change;
+        defaults to the demo user when unset.
+        """
+        if body.lead_status is not None and body.lead_status not in {
+            "new",
+            "contacted",
+            "replied",
+            "won",
+            "archived",
+        }:
+            raise HTTPException(
+                status_code=400,
+                detail="lead_status must be one of new/contacted/replied/won/archived",
+            )
 
         async with session_factory() as session:
-            await session.execute(
-                update(Lead).where(Lead.id == lead_id).values(**changes)
-            )
-            await session.commit()
             lead = await session.get(Lead, lead_id)
             if lead is None:
                 raise HTTPException(status_code=404, detail="lead not found")
+
+            # Capture before/after so we can write meaningful activity
+            # rows. The fields list mirrors what LeadUpdate exposes —
+            # if a new field gets added there, add it here too.
+            activities: list[dict[str, Any]] = []
+            now = datetime.now(timezone.utc)
+
+            if body.lead_status is not None and body.lead_status != lead.lead_status:
+                activities.append(
+                    {
+                        "kind": "status",
+                        "payload": {
+                            "from": lead.lead_status,
+                            "to": body.lead_status,
+                        },
+                    }
+                )
+                lead.lead_status = body.lead_status
+            if "owner_user_id" in body.model_fields_set:
+                if body.owner_user_id != lead.owner_user_id:
+                    activities.append(
+                        {
+                            "kind": "assigned",
+                            "payload": {
+                                "from": lead.owner_user_id,
+                                "to": body.owner_user_id,
+                            },
+                        }
+                    )
+                lead.owner_user_id = body.owner_user_id
+            if body.notes is not None and body.notes != (lead.notes or ""):
+                activities.append(
+                    {
+                        "kind": "notes",
+                        "payload": {"len": len(body.notes)},
+                    }
+                )
+                lead.notes = body.notes
+
+            if not activities and (
+                body.lead_status is None
+                and body.notes is None
+                and "owner_user_id" not in body.model_fields_set
+            ):
+                raise HTTPException(status_code=400, detail="no fields to update")
+
+            lead.last_touched_at = now
+
+            # Pull team_id off the parent search query so the activity
+            # row can land in the team feed when the lead is shared.
+            search = await session.get(SearchQuery, lead.query_id)
+            team_id_for_activity = search.team_id if search else None
+
+            for act in activities:
+                session.add(
+                    LeadActivity(
+                        lead_id=lead.id,
+                        user_id=actor_user_id,
+                        team_id=team_id_for_activity,
+                        kind=act["kind"],
+                        payload=act["payload"],
+                    )
+                )
+            await session.commit()
+            await session.refresh(lead)
             return LeadResponse.model_validate(lead)
+
+    # ── /api/v1/leads/{id}/custom-fields ────────────────────────────────
+
+    @app.get(
+        "/api/v1/leads/{lead_id}/custom-fields",
+        response_model=LeadCustomFieldsResponse,
+    )
+    async def list_lead_custom_fields(
+        lead_id: uuid.UUID,
+        user_id: int,
+    ) -> LeadCustomFieldsResponse:
+        async with session_factory() as session:
+            stmt = (
+                select(LeadCustomField)
+                .where(LeadCustomField.lead_id == lead_id)
+                .where(LeadCustomField.user_id == user_id)
+                .order_by(LeadCustomField.key)
+            )
+            rows = (await session.execute(stmt)).scalars().all()
+            items = [
+                LeadCustomFieldSchema.model_validate(r) for r in rows
+            ]
+        return LeadCustomFieldsResponse(items=items)
+
+    @app.put(
+        "/api/v1/leads/{lead_id}/custom-fields",
+        response_model=LeadCustomFieldSchema,
+    )
+    async def upsert_lead_custom_field(
+        lead_id: uuid.UUID,
+        body: LeadCustomFieldUpsert,
+        user_id: int,
+    ) -> LeadCustomFieldSchema:
+        """Create or update one (key, value) pair on this lead.
+
+        Schemaless — the user picks any key from the UI. ``value`` may
+        be NULL, which acts as a soft-delete on the row (we still keep
+        the row so the timeline can reference the historical key).
+        """
+        key = body.key.strip()
+        if not key:
+            raise HTTPException(status_code=400, detail="key is required")
+        value = body.value if body.value is None else body.value.strip()
+        async with session_factory() as session:
+            existing = (
+                await session.execute(
+                    select(LeadCustomField)
+                    .where(LeadCustomField.lead_id == lead_id)
+                    .where(LeadCustomField.user_id == user_id)
+                    .where(LeadCustomField.key == key)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            now = datetime.now(timezone.utc)
+            search = (
+                await session.execute(
+                    select(SearchQuery)
+                    .join(Lead, Lead.query_id == SearchQuery.id)
+                    .where(Lead.id == lead_id)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            team_id_for_activity = search.team_id if search else None
+            if existing is None:
+                existing = LeadCustomField(
+                    lead_id=lead_id,
+                    user_id=user_id,
+                    key=key,
+                    value=value,
+                )
+                session.add(existing)
+            else:
+                existing.value = value
+                existing.updated_at = now
+            session.add(
+                LeadActivity(
+                    lead_id=lead_id,
+                    user_id=user_id,
+                    team_id=team_id_for_activity,
+                    kind="custom_field",
+                    payload={"key": key, "value": value},
+                )
+            )
+            await session.commit()
+            await session.refresh(existing)
+            return LeadCustomFieldSchema.model_validate(existing)
+
+    @app.delete("/api/v1/leads/{lead_id}/custom-fields/{key}")
+    async def delete_lead_custom_field(
+        lead_id: uuid.UUID,
+        key: str,
+        user_id: int,
+    ) -> dict[str, bool]:
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    select(LeadCustomField)
+                    .where(LeadCustomField.lead_id == lead_id)
+                    .where(LeadCustomField.user_id == user_id)
+                    .where(LeadCustomField.key == key)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                return {"deleted": False}
+            await session.delete(row)
+            await session.commit()
+        return {"deleted": True}
+
+    # ── /api/v1/leads/{id}/activity ─────────────────────────────────────
+
+    @app.get(
+        "/api/v1/leads/{lead_id}/activity",
+        response_model=LeadActivityListResponse,
+    )
+    async def list_lead_activity(
+        lead_id: uuid.UUID,
+        limit: int = 50,
+    ) -> LeadActivityListResponse:
+        limit = max(1, min(limit, 200))
+        async with session_factory() as session:
+            stmt = (
+                select(LeadActivity)
+                .where(LeadActivity.lead_id == lead_id)
+                .order_by(LeadActivity.created_at.desc())
+                .limit(limit)
+            )
+            rows = (await session.execute(stmt)).scalars().all()
+            items = [LeadActivitySchema.model_validate(r) for r in rows]
+        return LeadActivityListResponse(items=items)
+
+    # ── /api/v1/leads/{id}/tasks ────────────────────────────────────────
+
+    @app.get(
+        "/api/v1/leads/{lead_id}/tasks",
+        response_model=LeadTaskListResponse,
+    )
+    async def list_lead_tasks(
+        lead_id: uuid.UUID,
+        user_id: int,
+    ) -> LeadTaskListResponse:
+        async with session_factory() as session:
+            stmt = (
+                select(LeadTask)
+                .where(LeadTask.lead_id == lead_id)
+                .where(LeadTask.user_id == user_id)
+                .order_by(
+                    LeadTask.done_at.is_(None).desc(),
+                    LeadTask.due_at.asc().nullslast(),
+                    LeadTask.created_at.desc(),
+                )
+            )
+            rows = (await session.execute(stmt)).scalars().all()
+            items = [LeadTaskSchema.model_validate(r) for r in rows]
+        return LeadTaskListResponse(items=items)
+
+    @app.post(
+        "/api/v1/leads/{lead_id}/tasks",
+        response_model=LeadTaskSchema,
+    )
+    async def create_lead_task(
+        lead_id: uuid.UUID,
+        body: LeadTaskCreate,
+        user_id: int,
+    ) -> LeadTaskSchema:
+        async with session_factory() as session:
+            row = LeadTask(
+                lead_id=lead_id,
+                user_id=user_id,
+                content=body.content.strip(),
+                due_at=body.due_at,
+            )
+            session.add(row)
+            search = (
+                await session.execute(
+                    select(SearchQuery)
+                    .join(Lead, Lead.query_id == SearchQuery.id)
+                    .where(Lead.id == lead_id)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            session.add(
+                LeadActivity(
+                    lead_id=lead_id,
+                    user_id=user_id,
+                    team_id=search.team_id if search else None,
+                    kind="task",
+                    payload={
+                        "content": body.content.strip()[:200],
+                        "due_at": body.due_at.isoformat() if body.due_at else None,
+                    },
+                )
+            )
+            await session.commit()
+            await session.refresh(row)
+            return LeadTaskSchema.model_validate(row)
+
+    @app.patch(
+        "/api/v1/tasks/{task_id}",
+        response_model=LeadTaskSchema,
+    )
+    async def update_lead_task(
+        task_id: uuid.UUID,
+        body: LeadTaskUpdate,
+        user_id: int,
+    ) -> LeadTaskSchema:
+        async with session_factory() as session:
+            row = await session.get(LeadTask, task_id)
+            if row is None or row.user_id != user_id:
+                raise HTTPException(status_code=404, detail="task not found")
+            data = body.model_dump(exclude_unset=True)
+            if "content" in data and data["content"]:
+                row.content = data["content"].strip()
+            if "due_at" in data:
+                row.due_at = data["due_at"]
+            if "done" in data and data["done"] is not None:
+                row.done_at = (
+                    datetime.now(timezone.utc) if data["done"] else None
+                )
+            await session.commit()
+            await session.refresh(row)
+            return LeadTaskSchema.model_validate(row)
+
+    @app.delete("/api/v1/tasks/{task_id}")
+    async def delete_lead_task(
+        task_id: uuid.UUID,
+        user_id: int,
+    ) -> dict[str, bool]:
+        async with session_factory() as session:
+            row = await session.get(LeadTask, task_id)
+            if row is None or row.user_id != user_id:
+                return {"deleted": False}
+            await session.delete(row)
+            await session.commit()
+        return {"deleted": True}
+
+    @app.get(
+        "/api/v1/users/{user_id}/tasks",
+        response_model=LeadTaskListResponse,
+    )
+    async def list_my_tasks(
+        user_id: int,
+        open_only: bool = True,
+        limit: int = 100,
+    ) -> LeadTaskListResponse:
+        """Today's-tasks widget feed: open tasks across every lead."""
+        limit = max(1, min(limit, 500))
+        async with session_factory() as session:
+            stmt = select(LeadTask).where(LeadTask.user_id == user_id)
+            if open_only:
+                stmt = stmt.where(LeadTask.done_at.is_(None))
+            stmt = stmt.order_by(
+                LeadTask.due_at.asc().nullslast(),
+                LeadTask.created_at.desc(),
+            ).limit(limit)
+            rows = (await session.execute(stmt)).scalars().all()
+            items = [LeadTaskSchema.model_validate(r) for r in rows]
+        return LeadTaskListResponse(items=items)
 
     @app.post(
         "/api/v1/leads/{lead_id}/draft-email",

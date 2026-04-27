@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
+import { LeadDetailExtras } from "@/components/app/LeadDetailExtras";
 import {
   type EmailTone,
   type Lead,
@@ -305,6 +306,8 @@ export function LeadDetailModal({
                 rows={3}
               />
             </div>
+
+            <LeadDetailExtras leadId={lead.id} />
           </div>
 
           <div>

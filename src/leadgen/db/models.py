@@ -520,3 +520,116 @@ class OutreachTemplate(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+class LeadCustomField(Base):
+    """User-defined extra column on a lead.
+
+    Schemaless on purpose: the user types whatever ``key`` they want
+    in the UI ("decision_maker", "deal_value", "next_step") and the
+    value is stored as text. Scoped per (lead, user) so two members
+    of a team can keep different notes on the same shared lead
+    without overwriting each other.
+    """
+
+    __tablename__ = "lead_custom_fields"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    lead_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("leads.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
+    value: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "lead_id", "user_id", "key",
+            name="uq_lead_custom_fields_owner_key",
+        ),
+    )
+
+
+class LeadActivity(Base):
+    """Append-only timeline event on a lead.
+
+    ``kind`` ∈ {created, status, notes, assigned, mark, custom_field,
+    task}. ``payload`` is kind-specific (e.g. ``{"from": "new",
+    "to": "contacted"}`` for status changes). Used to render the per-
+    lead timeline + the team activity feed.
+    """
+
+    __tablename__ = "lead_activities"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    lead_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("leads.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        _UUID(),
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[dict[str, Any] | None] = mapped_column(_JSONB())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class LeadTask(Base):
+    """Reminder / task attached to a lead.
+
+    ``due_at`` may be NULL for "do this whenever" notes, but most
+    rows will have it. ``done_at`` flips the moment the user ticks
+    the checkbox; we keep the row instead of deleting so the activity
+    log can reference completed work.
+    """
+
+    __tablename__ = "lead_tasks"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(), primary_key=True, default=uuid.uuid4
+    )
+    lead_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID(),
+        ForeignKey("leads.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )

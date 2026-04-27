@@ -331,6 +331,74 @@ class OutreachTemplateListResponse(BaseModel):
     items: list[OutreachTemplate]
 
 
+class LeadCustomField(BaseModel):
+    """User-defined extra column on a lead."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    lead_id: uuid.UUID
+    user_id: int
+    key: str
+    value: str | None
+    updated_at: datetime
+
+
+class LeadCustomFieldUpsert(BaseModel):
+    key: str = Field(..., min_length=1, max_length=64)
+    value: str | None = Field(default=None, max_length=2000)
+
+
+class LeadCustomFieldsResponse(BaseModel):
+    items: list[LeadCustomField]
+
+
+class LeadActivity(BaseModel):
+    """One row from the lead timeline."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    lead_id: uuid.UUID
+    user_id: int
+    team_id: uuid.UUID | None
+    kind: str
+    payload: dict[str, Any] | None = None
+    created_at: datetime
+
+
+class LeadActivityListResponse(BaseModel):
+    items: list[LeadActivity]
+
+
+class LeadTask(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    lead_id: uuid.UUID
+    user_id: int
+    content: str
+    due_at: datetime | None
+    done_at: datetime | None
+    created_at: datetime
+
+
+class LeadTaskCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=1000)
+    due_at: datetime | None = None
+
+
+class LeadTaskUpdate(BaseModel):
+    content: str | None = Field(default=None, min_length=1, max_length=1000)
+    due_at: datetime | None = None
+    # Send {"done": true} to mark complete, {"done": false} to reopen.
+    done: bool | None = None
+
+
+class LeadTaskListResponse(BaseModel):
+    items: list[LeadTask]
+
+
 class WeeklyCheckinResponse(BaseModel):
     """Henry's read on the user's recent CRM activity.
 
