@@ -593,6 +593,116 @@ const TRANSLATIONS = {
     "profile.subtitle": "Как AI оценивает лидов для вас",
     "profile.hint":
       "Профиль персонализирует каждый AI-скор и подачу.",
+
+    // Privacy & data block on /app/profile
+    "profile.privacy.title": "Конфиденциальность и данные",
+    "profile.privacy.subtitle":
+      "Скачайте копию ваших данных, посмотрите журнал активности или удалите аккаунт.",
+    "profile.privacy.export": "Экспорт моих данных",
+    "profile.privacy.exportHint":
+      "JSON-файл со всеми вашими профилем, лидами и активностью.",
+    "profile.privacy.audit": "Журнал активности",
+    "profile.privacy.auditEmpty": "Записей пока нет.",
+    "profile.privacy.delete": "Удалить аккаунт",
+    "profile.privacy.deleteHint":
+      "Без возможности восстановления. Удаляются все ваши данные.",
+    "profile.privacy.deleteConfirmTitle": "Удалить аккаунт навсегда",
+    "profile.privacy.deleteConfirmBody":
+      "Чтобы подтвердить, введите ваш email и пароль. Это действие необратимо.",
+    "profile.privacy.deleteConfirmEmail": "Ваш email",
+    "profile.privacy.deleteConfirmPassword": "Пароль",
+    "profile.privacy.deleteConfirmCta": "Удалить навсегда",
+    "profile.privacy.deleteFailed":
+      "Не удалось удалить аккаунт. Проверьте email и пароль.",
+
+    // Legal pages
+    "legal.updated": "Обновлено {date}",
+    "legal.nav.privacy": "Политика конфиденциальности",
+    "legal.nav.terms": "Условия использования",
+    "legal.nav.cookies": "Cookies",
+    "legal.nav.contact": "По вопросам — {email}",
+
+    "legal.privacy.title": "Политика конфиденциальности",
+    "legal.privacy.intro":
+      "Эта страница описывает, какие данные Convioo собирает, как мы их используем и какими правами вы обладаете.",
+    "legal.privacy.collect.title": "Какие данные мы собираем",
+    "legal.privacy.collect.body":
+      "Мы храним только то, что нужно для работы сервиса:",
+    "legal.privacy.collect.li1":
+      "Аккаунт: имя, email, пароль (в виде хэша argon2), настройки профиля и ниш.",
+    "legal.privacy.collect.li2":
+      "Поиски и лиды: запросы, результаты Google Places, заметки, статусы, активность по лидам.",
+    "legal.privacy.collect.li3":
+      "Технические события: даты входа, IP и user-agent в журнале активности (только для безопасности).",
+    "legal.privacy.use.title": "Как мы используем данные",
+    "legal.privacy.use.body":
+      "Данные нужны исключительно для работы сервиса: поиск компаний, AI-скоринг, CRM, поддержка. Мы не продаём ваши данные и не используем их для рекламы.",
+    "legal.privacy.share.title": "С кем мы делимся данными",
+    "legal.privacy.share.body":
+      "Только с провайдерами инфраструктуры, без которых сервис не работает:",
+    "legal.privacy.share.li1":
+      "Anthropic (Claude API) — обработка AI-скоринга и генерации писем.",
+    "legal.privacy.share.li2":
+      "Google Places API — получение информации о компаниях.",
+    "legal.privacy.share.li3":
+      "Хостинг (Railway, Vercel) — выполнение приложения и хранение БД.",
+    "legal.privacy.rights.title": "Ваши права",
+    "legal.privacy.rights.body":
+      "В разделе «Мой профиль → Конфиденциальность» вы можете в один клик скачать полный экспорт ваших данных в JSON или удалить аккаунт навсегда. По любому вопросу о данных пишите на support@convioo.com.",
+    "legal.privacy.retention.title": "Сроки хранения",
+    "legal.privacy.retention.body":
+      "Данные хранятся пока активен ваш аккаунт. После удаления аккаунта вся пользовательская информация (профиль, лиды, заметки, активность) удаляется немедленно.",
+    "legal.privacy.contact.title": "Связь с нами",
+    "legal.privacy.contact.body":
+      "По вопросам конфиденциальности и GDPR пишите на support@convioo.com. Мы отвечаем в течение 30 дней.",
+
+    "legal.terms.title": "Условия использования",
+    "legal.terms.intro":
+      "Используя Convioo, вы соглашаетесь с этими условиями. Если что-то непонятно — напишите нам, прежде чем продолжать.",
+    "legal.terms.account.title": "Ваш аккаунт",
+    "legal.terms.account.body":
+      "Вы отвечаете за безопасность пароля и за все действия в своём аккаунте. Сообщите нам сразу, если заметите подозрительную активность.",
+    "legal.terms.allowed.title": "Что разрешено и что — нет",
+    "legal.terms.allowed.body":
+      "Convioo создан для честного B2B-аутрича. Запрещено:",
+    "legal.terms.allowed.li1":
+      "Массовый спам и любые действия, противоречащие законодательству о персональных данных (GDPR/CCPA).",
+    "legal.terms.allowed.li2":
+      "Попытки обходить лимиты, реверс-инжиниринг или взлом инфраструктуры.",
+    "legal.terms.allowed.li3":
+      "Использование сервиса для торговли запрещёнными товарами или обмана клиентов.",
+    "legal.terms.payments.title": "Оплата и подписки",
+    "legal.terms.payments.body":
+      "Платные тарифы оплачиваются по подписке (на момент написания — пока в beta доступ бесплатный). Возврат — по разумной просьбе в течение 14 дней.",
+    "legal.terms.warranty.title": "Без гарантий",
+    "legal.terms.warranty.body":
+      "Сервис предоставляется «как есть». Мы стремимся к стабильной работе, но не гарантируем 100% uptime или абсолютную точность AI-результатов. Решения принимаете вы — Convioo это инструмент.",
+    "legal.terms.termination.title": "Прекращение использования",
+    "legal.terms.termination.body":
+      "Вы можете удалить аккаунт в любой момент через профиль. Мы оставляем за собой право закрыть аккаунт при нарушении этих условий, предварительно уведомив вас.",
+    "legal.terms.law.title": "Применимое право",
+    "legal.terms.law.body":
+      "К отношениям применяется право Эстонии (страны регистрации операционной компании), за исключением императивных норм страны вашего проживания.",
+
+    "legal.cookies.title": "Использование cookies",
+    "legal.cookies.intro":
+      "Convioo использует минимальный набор cookies — только то, что нужно для работы сайта. Никакого рекламного трекинга.",
+    "legal.cookies.what.title": "Что такое cookies",
+    "legal.cookies.what.body":
+      "Cookies — небольшие файлы, которые сайт сохраняет в вашем браузере, чтобы запомнить настройки и сессию.",
+    "legal.cookies.use.title": "Какие cookies мы используем",
+    "legal.cookies.use.li1":
+      "Сессионные: для входа и сохранения вашей авторизации.",
+    "legal.cookies.use.li2":
+      "Настройки: язык интерфейса, тема, активное рабочее пространство.",
+    "legal.cookies.use.li3":
+      "Безопасность: защита от CSRF и нежелательных действий.",
+    "legal.cookies.thirdparty.title": "Сторонние cookies",
+    "legal.cookies.thirdparty.body":
+      "Мы не подгружаем рекламные трекеры. Vercel и инфраструктурные провайдеры могут использовать собственные технические cookies для балансировки нагрузки.",
+    "legal.cookies.control.title": "Управление",
+    "legal.cookies.control.body":
+      "Вы всегда можете очистить cookies в настройках браузера. Если убрать сессионные cookies — придётся заново войти в аккаунт.",
     "profile.field.business": "Размер бизнеса",
     "profile.field.region": "Домашний регион",
     "profile.field.offer": "Профессия / предложение",
@@ -1322,6 +1432,116 @@ const TRANSLATIONS = {
     "profile.subtitle": "How AI scores leads for you",
     "profile.hint":
       "Your profile personalises every AI score and pitch.",
+
+    // Privacy & data block on /app/profile
+    "profile.privacy.title": "Privacy & data",
+    "profile.privacy.subtitle":
+      "Download a copy of your data, review your audit log, or delete your account.",
+    "profile.privacy.export": "Export my data",
+    "profile.privacy.exportHint":
+      "A JSON file with your full profile, leads and activity.",
+    "profile.privacy.audit": "Audit log",
+    "profile.privacy.auditEmpty": "No entries yet.",
+    "profile.privacy.delete": "Delete account",
+    "profile.privacy.deleteHint":
+      "This is permanent. All of your data will be removed.",
+    "profile.privacy.deleteConfirmTitle": "Delete your account permanently",
+    "profile.privacy.deleteConfirmBody":
+      "To confirm, retype your email and password. This action cannot be undone.",
+    "profile.privacy.deleteConfirmEmail": "Your email",
+    "profile.privacy.deleteConfirmPassword": "Password",
+    "profile.privacy.deleteConfirmCta": "Delete forever",
+    "profile.privacy.deleteFailed":
+      "Could not delete the account. Check your email and password.",
+
+    // Legal pages
+    "legal.updated": "Updated {date}",
+    "legal.nav.privacy": "Privacy policy",
+    "legal.nav.terms": "Terms of service",
+    "legal.nav.cookies": "Cookies",
+    "legal.nav.contact": "Questions — {email}",
+
+    "legal.privacy.title": "Privacy policy",
+    "legal.privacy.intro":
+      "This page explains what data Convioo collects, how we use it, and the rights you have.",
+    "legal.privacy.collect.title": "What data we collect",
+    "legal.privacy.collect.body":
+      "We only store what's needed to run the service:",
+    "legal.privacy.collect.li1":
+      "Account: name, email, password (stored as an argon2 hash), profile and niche settings.",
+    "legal.privacy.collect.li2":
+      "Searches and leads: your queries, Google Places results, notes, statuses, lead activity.",
+    "legal.privacy.collect.li3":
+      "Technical events: sign-in dates, IP and user-agent in the audit log (security only).",
+    "legal.privacy.use.title": "How we use the data",
+    "legal.privacy.use.body":
+      "Data is used solely to operate the service: company search, AI scoring, CRM, support. We do not sell your data and do not use it for advertising.",
+    "legal.privacy.share.title": "Who we share data with",
+    "legal.privacy.share.body":
+      "Only infrastructure providers we cannot operate without:",
+    "legal.privacy.share.li1":
+      "Anthropic (Claude API) — runs the AI scoring and email drafts.",
+    "legal.privacy.share.li2":
+      "Google Places API — sources company information.",
+    "legal.privacy.share.li3":
+      "Hosting (Railway, Vercel) — runs the application and database.",
+    "legal.privacy.rights.title": "Your rights",
+    "legal.privacy.rights.body":
+      "Under \"My profile → Privacy & data\" you can download a full export of your data as JSON or delete your account permanently in one click. For any data question email support@convioo.com.",
+    "legal.privacy.retention.title": "Data retention",
+    "legal.privacy.retention.body":
+      "Data is kept while your account is active. When you delete your account, all of your information (profile, leads, notes, activity) is removed immediately.",
+    "legal.privacy.contact.title": "Contact",
+    "legal.privacy.contact.body":
+      "For privacy and GDPR requests email support@convioo.com. We respond within 30 days.",
+
+    "legal.terms.title": "Terms of service",
+    "legal.terms.intro":
+      "By using Convioo you agree to these terms. If anything is unclear, contact us before continuing.",
+    "legal.terms.account.title": "Your account",
+    "legal.terms.account.body":
+      "You are responsible for the security of your password and for all activity in your account. Tell us right away if you notice anything suspicious.",
+    "legal.terms.allowed.title": "Allowed and forbidden uses",
+    "legal.terms.allowed.body":
+      "Convioo is built for honest B2B outreach. The following are not allowed:",
+    "legal.terms.allowed.li1":
+      "Mass spam or any action that breaks data-protection law (GDPR/CCPA).",
+    "legal.terms.allowed.li2":
+      "Trying to bypass limits, reverse-engineer or attack the infrastructure.",
+    "legal.terms.allowed.li3":
+      "Using the service to sell unlawful goods or to deceive clients.",
+    "legal.terms.payments.title": "Payments and subscriptions",
+    "legal.terms.payments.body":
+      "Paid plans are charged on subscription (today access is free during beta). Refunds available on reasonable request within 14 days.",
+    "legal.terms.warranty.title": "No warranties",
+    "legal.terms.warranty.body":
+      "The service is provided as-is. We aim for high uptime but do not guarantee 100% availability or absolute AI accuracy. You make the final decisions — Convioo is a tool.",
+    "legal.terms.termination.title": "Termination",
+    "legal.terms.termination.body":
+      "You can delete your account anytime from the profile page. We may close accounts that violate these terms after notifying you.",
+    "legal.terms.law.title": "Governing law",
+    "legal.terms.law.body":
+      "These terms are governed by Estonian law (where the operating entity is registered), without prejudice to mandatory consumer protections of your country of residence.",
+
+    "legal.cookies.title": "Cookies",
+    "legal.cookies.intro":
+      "Convioo uses a minimal set of cookies — only what's needed to run the site. No advertising trackers.",
+    "legal.cookies.what.title": "What are cookies",
+    "legal.cookies.what.body":
+      "Cookies are small files a site stores in your browser to remember settings and sessions.",
+    "legal.cookies.use.title": "Cookies we use",
+    "legal.cookies.use.li1":
+      "Session: for authentication and keeping you signed in.",
+    "legal.cookies.use.li2":
+      "Preferences: interface language, theme, active workspace.",
+    "legal.cookies.use.li3":
+      "Security: protection against CSRF and unwanted actions.",
+    "legal.cookies.thirdparty.title": "Third-party cookies",
+    "legal.cookies.thirdparty.body":
+      "We do not load advertising trackers. Vercel and our infrastructure providers may set their own technical cookies for load balancing.",
+    "legal.cookies.control.title": "Controlling cookies",
+    "legal.cookies.control.body":
+      "You can clear cookies anytime in your browser settings. Removing session cookies will sign you out.",
     "profile.field.business": "Business size",
     "profile.field.region": "Home region",
     "profile.field.offer": "Profession / offer",

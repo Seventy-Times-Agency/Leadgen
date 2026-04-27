@@ -257,9 +257,18 @@ export default function HomePage() {
       >
         <div>{t("landing.footer.built")}</div>
         <div style={{ display: "flex", gap: 20 }}>
-          <a>{t("landing.footer.privacy")}</a>
-          <a>{t("landing.footer.terms")}</a>
-          <a>{t("landing.footer.contact")}</a>
+          <Link href="/privacy" style={{ color: "inherit" }}>
+            {t("landing.footer.privacy")}
+          </Link>
+          <Link href="/terms" style={{ color: "inherit" }}>
+            {t("landing.footer.terms")}
+          </Link>
+          <Link href="/cookies" style={{ color: "inherit" }}>
+            {t("legal.nav.cookies")}
+          </Link>
+          <a href="mailto:support@convioo.com" style={{ color: "inherit" }}>
+            {t("landing.footer.contact")}
+          </a>
         </div>
       </footer>
     </div>
