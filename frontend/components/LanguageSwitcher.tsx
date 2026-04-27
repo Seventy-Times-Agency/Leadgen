@@ -1,6 +1,6 @@
 "use client";
 
-import { useLocale, type Locale } from "@/lib/i18n";
+import { useLocale, type Locale, SUPPORTED_LOCALES } from "@/lib/i18n";
 
 /**
  * Small segmented-control RU/EN toggle. Persists via the i18n provider.
@@ -11,7 +11,7 @@ export function LanguageSwitcher({
   compact?: boolean;
 }) {
   const { lang, setLang } = useLocale();
-  const opts: Locale[] = ["ru", "en"];
+  const opts: Locale[] = SUPPORTED_LOCALES;
   return (
     <div
       className="seg"

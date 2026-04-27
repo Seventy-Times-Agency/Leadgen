@@ -22,7 +22,9 @@ import {
  * to Russian because the team that QAs the site is Russian-speaking.
  */
 
-export type Locale = "ru" | "en";
+export type Locale = "ru" | "en" | "uk";
+
+export const SUPPORTED_LOCALES: Locale[] = ["ru", "uk", "en"];
 
 const STORAGE_KEY = "convioo.lang";
 const LEGACY_STORAGE_KEY = "leadgen.lang";
@@ -2125,7 +2127,9 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem(LEGACY_STORAGE_KEY);
       }
     }
-    if (stored === "en" || stored === "ru") setLangState(stored);
+    if (stored === "en" || stored === "ru" || stored === "uk") {
+      setLangState(stored);
+    }
   }, []);
 
   const setLang = useCallback((l: Locale) => {
