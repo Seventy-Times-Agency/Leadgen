@@ -303,6 +303,20 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .main-area {
   overflow-y: auto;
   background: var(--bg);
+  transition: background .25s ease;
+}
+/* Workspace tints — barely-there backgrounds so personal vs team
+   feel different without distracting from content. Driven by the
+   ``data-tint`` attribute set in app/layout.tsx based on the user's
+   per-workspace pick (see lib/tint.ts). */
+.main-area[data-tint="green"] {
+  background: linear-gradient(180deg, #f1f6f0 0%, var(--bg) 320px);
+}
+.main-area[data-tint="dark"] {
+  background: linear-gradient(180deg, #ececef 0%, var(--bg) 320px);
+}
+.main-area[data-tint="orange"] {
+  background: linear-gradient(180deg, #faf3ea 0%, var(--bg) 320px);
 }
 .topbar {
   position: sticky; top: 0; z-index: 10;
